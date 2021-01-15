@@ -20,10 +20,10 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
-	int OffsetX = 0;
+	int GlobalOffsetX = 0;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
-	int OffsetY = 0;
+	int GlobalOffsetY = 0;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings", Meta=(ClampMin=1, ClampMax=10))
 	int Octaves = 5;
@@ -59,19 +59,23 @@ public:
 	UTexture2D* CreateNoiseMap(TArray<float> NoiseArray);
 
 	UFUNCTION(BlueprintCallable)
-	void GenerateTerrain(TArray<float> NoiseArray);
+	void GenerateTerrain(UProceduralMeshComponent* Terrain, TArray<float> NoiseArray, int ChunkOffsetX,
+	                     int ChunkOffsetY);
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 private:
 	UPROPERTY(VisibleAnywhere)
-	UProceduralMeshComponent* Terrain = nullptr;
+	TArray<UProceduralMeshComponent*> World;
 
 	FastNoiseLite NoiseGen;
+	FCriticalSection ActorMutex;
+	int ChunkNumberX = 1;
+	int ChunkNumberY = 0;
 	int MapTileWidth = 256;
 	int MapTileHeight = 256;
-	int NoiseArrayWidth = MapTileWidth + 1;
-	int NoiseArrayHeight = MapTileHeight + 1;
+	int NoiseArrayWidth = (MapTileWidth + 1) * ChunkNumberX;
+	int NoiseArrayHeight = (MapTileHeight + 1) * ChunkNumberY;
 
 	void UpdateGenerator();
 	void RandomiseSeed();
