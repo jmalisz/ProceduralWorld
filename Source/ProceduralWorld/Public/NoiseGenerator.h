@@ -3,8 +3,10 @@
 #pragma once
 
 #include "FastNoiseLite.h"
-#include "ProceduralMeshComponent.h"
 #include "CoreMinimal.h"
+
+#include "ChunkProperties.h"
+
 
 #include "NoiseGenerator.generated.h"
 
@@ -40,43 +42,42 @@ public:
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	bool bApplyRandomSeed = false;
 
-	UPROPERTY(EditAnywhere, Category="Noise settings")
-	float VertexSize = 100.f;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	int MapSizeX = 3;
 
-	UPROPERTY(EditAnywhere, Category="Noise settings")
-	float HeightMultiplier = VertexSize * 10.f;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	int MapSizeY = 3;
 
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
-	UMaterialInstance* TerrainMaterial = nullptr;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UMaterialInstance* DefaultMaterial = nullptr;
 
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
-	UCurveFloat* HeightCurve = nullptr;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UCurveFloat* DefaultHeightCurve = nullptr;
 
 	UFUNCTION(BlueprintCallable)
-	TArray<float> CreateNoiseData();
+	TArray<float> CreateNoiseData(float LocalOffsetX, float LocalOffsetY);
 
 	UFUNCTION(BlueprintCallable)
 	UTexture2D* CreateNoiseMap(TArray<float> NoiseArray);
 
 	UFUNCTION(BlueprintCallable)
-	void GenerateTerrain(UProceduralMeshComponent* Terrain, TArray<float> NoiseArray, int ChunkOffsetX,
-	                     int ChunkOffsetY);
+	void GenerateTerrain(int TerrainIndex);
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 private:
 	UPROPERTY(VisibleAnywhere)
-	TArray<UProceduralMeshComponent*> World;
+	TArray<FChunkProperties> World;
 
 	FastNoiseLite NoiseGen;
 	FCriticalSection ActorMutex;
-	int ChunkNumberX = 1;
-	int ChunkNumberY = 0;
-	int MapTileWidth = 256;
-	int MapTileHeight = 256;
-	int NoiseArrayWidth = (MapTileWidth + 1) * ChunkNumberX;
-	int NoiseArrayHeight = (MapTileHeight + 1) * ChunkNumberY;
+	int MapArrayWidth = 256;
+	int MapArrayHeight = 256;
+	// To create a map with 256 squares, we need 257x257 noise values
+	int NoiseArrayWidth = MapArrayWidth + 1;
+	int NoiseArrayHeight = MapArrayHeight + 1;
 
 	void UpdateGenerator();
 	void RandomiseSeed();
+	void SetUpChunk(int TerrainIndex);
 };
