@@ -115,6 +115,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	const float ChunkOffsetX = WorldHandle->ChunkNumberX * MapArrayWidth;
 	const float ChunkOffsetY = WorldHandle->ChunkNumberY * MapArrayHeight;
 
+	// Data for procedural mesh
 	TArray<float> NoiseArray = CreateNoiseData(ChunkOffsetX, ChunkOffsetY);
 	TArray<FVector> Vertices;
 	TArray<int32> Triangles;
@@ -125,6 +126,8 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	//Starting position for chunk
 	const float StartingPositionX = WorldHandle->ChunkNumberX ? ChunkOffsetX * VertexSize : 0;
 	const float StartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * VertexSize : 0;
+	const float UVStartingPositionX = WorldHandle->ChunkNumberX ? ChunkOffsetX * 1.f : 0;
+	const float UVStartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * 1.f : 0;
 
 	if (!World[TerrainIndex].HeightCurve)
 	{
@@ -136,7 +139,8 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	Vertices.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 	Triangles.Reserve(6 * MapSizeX * MapSizeX);
 	UV.Reserve(NoiseArrayWidth * NoiseArrayHeight);
-	Normals.Reserve(NoiseArrayWidth * NoiseArrayHeight);
+	// Normals.Reserve(NoiseArrayWidth * NoiseArrayHeight);
+	Normals.Init(FVector(0.f), NoiseArrayWidth * NoiseArrayHeight);
 	Tangents.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 	Colors.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 
@@ -156,7 +160,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 		{
 			const int Height = HeightMultiplier * HeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArrayHeight]);
 			Vertices.Add(FVector(StartingPositionX + VertexSize * x, StartingPositionY + VertexSize * y, Height));
-			UV.Add(FVector2D(0.0f + x * 1.0f, 0.0f + y * 1.0f));
+			UV.Add(FVector2D(UVStartingPositionX + x * 1.0f, UVStartingPositionY + y * 1.0f));
 		}
 	}
 
@@ -165,6 +169,23 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	{
 		for (int x = 0; x < MapArrayWidth; x++)
 		{
+			// Smooth normals calculations
+			// Vertex vectors are named after their value
+			const FVector VertexX = Vertices[x + y * NoiseArrayHeight];
+			const FVector VertexXp1 = Vertices[x + 1 + y * NoiseArrayHeight];
+			const FVector VertexYp1 = Vertices[x + (y + 1) * NoiseArrayHeight];
+			const FVector VertexXYp1 = Vertices[x + 1 + (y + 1) * NoiseArrayHeight];
+
+			const FVector CrossProduct1 = FVector::CrossProduct(VertexXp1 - VertexX, VertexYp1 - VertexX);
+			const FVector CrossProduct2 = FVector::CrossProduct(VertexXp1 - VertexYp1, VertexXYp1 - VertexYp1);
+
+			Normals[x + y * NoiseArrayHeight] += CrossProduct1;
+			Normals[x + 1 + y * NoiseArrayHeight] += CrossProduct1;
+			Normals[x + 1 + y * NoiseArrayHeight] += CrossProduct2;
+			Normals[x + (y + 1) * NoiseArrayHeight] += CrossProduct1;
+			Normals[x + (y + 1) * NoiseArrayHeight] += CrossProduct2;
+			Normals[x + 1 + (y + 1) * NoiseArrayHeight] += CrossProduct2;
+			
 			// TL
 			Triangles.Add(x + y * NoiseArrayHeight);
 			// BL
@@ -180,17 +201,20 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 		}
 	}
 
-	// UKismetProceduralMeshLibrary::CalculateTangentsForMesh(Vertices, Triangles, UV, Normals, Tangents);
+	for (int i = 0; i < NoiseArrayWidth * NoiseArrayHeight; i++)
+	{
+		Normals[i].Normalize();
+		if (!Normals[i].IsNormalized())
+		UE_LOG(LogTemp, Warning, TEXT("Normal is not normalized"));
+	}
 
-	// ActorMutex.Lock();
-	// AsyncTask(ENamedThreads::GameThread, [=]()
-	// {
-	Terrain->CreateMeshSection(0, Vertices, Triangles, Normals, UV, Colors, Tangents, true);
-	Terrain->SetMaterial(0, TerrainMaterial);
-	// ReSharper disable once CppExpressionWithoutSideEffects
-	// Terrain->ContainsPhysicsTriMeshData(true);
-	// });
-	// ActorMutex.Unlock();
+	AsyncTask(ENamedThreads::GameThread, [=]()
+	{
+		Terrain->CreateMeshSection(0, Vertices, Triangles, Normals, UV, Colors, Tangents, true);
+		Terrain->SetMaterial(0, TerrainMaterial);
+		// ReSharper disable once CppExpressionWithoutSideEffects
+		Terrain->ContainsPhysicsTriMeshData(true);
+	});
 
 	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread completed: %s"), *Terrain->GetName());
 }
@@ -209,28 +233,14 @@ void ANoiseGenerator::BeginPlay()
 		return;
 	}
 
-	SetUpChunk(0);
-	SetUpChunk(1);
-	SetUpChunk(3);
-	GenerateTerrain(0);
-	GenerateTerrain(1);
-	GenerateTerrain(3);
-
-	// for (FChunkProperties Chunk : World)
-	// {
-	// 	
-	// }
-
-	// for (int y = 0; y < ChunkNumberY; y++)
-	// {
-	// 	for (int x = 0; x < ChunkNumberX; x++)
-	// 	{
-	// 		AsyncTask(ENamedThreads::HighTaskPriority, [&, NoiseArray, x, y]()
-	// 		{
-	// 			GenerateTerrain(World[x + y * ChunkNumberY], NoiseArray, x * MapTileWidth, y * MapTileHeight);
-	// 		});
-	// 	}
-	// }
+	for (int i = 0; i < MapSizeX * MapSizeY; i++)
+	{
+		AsyncTask(ENamedThreads::HighTaskPriority, [&, i]()
+		{
+			SetUpChunk(i);
+			GenerateTerrain(i);
+		});
+	}
 }
 
 void ANoiseGenerator::UpdateGenerator()

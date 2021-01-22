@@ -49,6 +49,9 @@ public:
 	int MapSizeY = 3;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
+	float DefaultVertexSize = 100.f;
+
+	UPROPERTY(EditAnywhere, Category="Map settings")
 	UMaterialInstance* DefaultMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
