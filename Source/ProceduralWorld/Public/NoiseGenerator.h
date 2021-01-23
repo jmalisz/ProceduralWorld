@@ -74,13 +74,18 @@ private:
 
 	FastNoiseLite NoiseGen;
 	FCriticalSection ActorMutex;
+	// How many rendered squares per chunk
 	int MapArrayWidth = 256;
 	int MapArrayHeight = 256;
-	// To create a map with 256 squares, we need 257x257 noise values
-	int NoiseArrayWidth = MapArrayWidth + 1;
-	int NoiseArrayHeight = MapArrayHeight + 1;
+	// Added border for edge normal calculation
+	int EdgeArrayWidth = MapArrayWidth + 2;
+	int EdgeArrayHeight = MapArrayHeight + 2;
+	// Number of vertices/noise values
+	int NoiseArrayWidth = EdgeArrayWidth + 1;
+	int NoiseArrayHeight = EdgeArrayHeight + 1;
 
 	void UpdateGenerator();
+	void UpdateWorld();
 	void RandomiseSeed();
 	void SetUpChunk(int TerrainIndex);
 };

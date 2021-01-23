@@ -14,28 +14,10 @@
 // Sets default values for this component's properties
 ANoiseGenerator::ANoiseGenerator()
 {
-	const int ChunksNumber = MapSizeX * MapSizeY;
-
 	PrimaryActorTick.bCanEverTick = false;
 
 	NoiseGen.SetFractalType(FastNoiseLite::FractalType_FBm);
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
-
-	World.Reserve(ChunksNumber);
-
-	for (int y = 0; y < MapSizeY; y++)
-	{
-		for (int x = 0; x < MapSizeX; x++)
-		{
-			const FName ObjectName = *FString::Printf(TEXT("TerrainMesh%i"), x + y * MapSizeY);
-			World.Add(FChunkProperties());
-			World[x + y * MapSizeY].TerrainMesh = CreateDefaultSubobject<UProceduralMeshComponent>(ObjectName);
-			World[x + y * MapSizeY].ChunkNumberX = x;
-			World[x + y * MapSizeY].ChunkNumberY = y;
-			World[x + y * MapSizeY].TerrainMesh->bUseAsyncCooking = true;
-		}
-	}
-	RootComponent = World[0].TerrainMesh;
 }
 
 
@@ -118,9 +100,11 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	// Data for procedural mesh
 	TArray<float> NoiseArray = CreateNoiseData(ChunkOffsetX, ChunkOffsetY);
 	TArray<FVector> Vertices;
+	TArray<FVector> TrueVertices;
 	TArray<int32> Triangles;
 	TArray<FVector2D> UV;
 	TArray<FVector> Normals;
+	TArray<FVector> TrueNormals;
 	TArray<FProcMeshTangent> Tangents;
 	TArray<FColor> Colors;
 	//Starting position for chunk
@@ -137,10 +121,12 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 
 	// The numbers are number of times array is accessed inside loop
 	Vertices.Reserve(NoiseArrayWidth * NoiseArrayHeight);
-	Triangles.Reserve(6 * MapSizeX * MapSizeX);
+	// TrueVertices.Reserve((NoiseArrayWidth - 1) * (NoiseArrayHeight - 1));
+	// Triangles.Reserve(6 * MapSizeX * MapSizeX);
 	UV.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 	// Normals.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 	Normals.Init(FVector(0.f), NoiseArrayWidth * NoiseArrayHeight);
+	// TrueNormals.Reserve((NoiseArrayWidth - 2) * (NoiseArrayHeight - 2));
 	Tangents.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 	Colors.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 
@@ -159,15 +145,14 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 		for (int x = 0; x < NoiseArrayWidth; x++)
 		{
 			const int Height = HeightMultiplier * HeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArrayHeight]);
-			Vertices.Add(FVector(StartingPositionX + VertexSize * x, StartingPositionY + VertexSize * y, Height));
-			UV.Add(FVector2D(UVStartingPositionX + x * 1.0f, UVStartingPositionY + y * 1.0f));
+			Vertices.Add(FVector(StartingPositionX + VertexSize * (x - 1), StartingPositionY + VertexSize * (y - 1),
+			                     Height));
 		}
 	}
 
-	// Second double loop combines correct vertices into triangles. 
-	for (int y = 0; y < MapArrayHeight; y++)
+	for (int y = 0; y < EdgeArrayHeight; y++)
 	{
-		for (int x = 0; x < MapArrayWidth; x++)
+		for (int x = 0; x < EdgeArrayWidth; x++)
 		{
 			// Smooth normals calculations
 			// Vertex vectors are named after their value
@@ -185,32 +170,46 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 			Normals[x + (y + 1) * NoiseArrayHeight] += CrossProduct1;
 			Normals[x + (y + 1) * NoiseArrayHeight] += CrossProduct2;
 			Normals[x + 1 + (y + 1) * NoiseArrayHeight] += CrossProduct2;
-			
-			// TL
-			Triangles.Add(x + y * NoiseArrayHeight);
-			// BL
-			Triangles.Add(x + (y + 1) * NoiseArrayHeight);
-			// TR
-			Triangles.Add(x + 1 + y * NoiseArrayHeight);
-			// TR
-			Triangles.Add(x + 1 + y * NoiseArrayHeight);
-			// BL
-			Triangles.Add(x + (y + 1) * NoiseArrayHeight);
-			// BR
-			Triangles.Add(x + 1 + (y + 1) * NoiseArrayHeight);
+
+			if (x * y > 0)
+			{
+				TrueVertices.Add(Vertices[x + y * NoiseArrayHeight]);
+				TrueNormals.Add(Normals[x + y * NoiseArrayHeight]);
+				UV.Add(FVector2D(UVStartingPositionX + (x - 1) * 1.0f, UVStartingPositionY + (y - 1) * 1.0f));
+			}
 		}
 	}
 
-	for (int i = 0; i < NoiseArrayWidth * NoiseArrayHeight; i++)
+	// Second double loop combines correct vertices into triangles. 
+	for (int y = 0; y < MapArrayHeight; y++)
 	{
-		Normals[i].Normalize();
-		if (!Normals[i].IsNormalized())
+		for (int x = 0; x < MapArrayWidth; x++)
+		{
+			// TL
+			Triangles.Add(x + y * (MapArrayHeight + 1));
+			// BL
+			Triangles.Add(x + (y + 1) * (MapArrayHeight + 1));
+			// TR
+			Triangles.Add(x + 1 + y * (MapArrayHeight + 1));
+			// TR
+			Triangles.Add(x + 1 + y * (MapArrayHeight + 1));
+			// BL
+			Triangles.Add(x + (y + 1) * (MapArrayHeight + 1));
+			// BR
+			Triangles.Add(x + 1 + (y + 1) * (MapArrayHeight + 1));
+		}
+	}
+
+	for (int i = 0; i < TrueNormals.Num(); i++)
+	{
+		TrueNormals[i].Normalize();
+		if (!TrueNormals[i].IsNormalized())
 		UE_LOG(LogTemp, Warning, TEXT("Normal is not normalized"));
 	}
 
 	AsyncTask(ENamedThreads::GameThread, [=]()
 	{
-		Terrain->CreateMeshSection(0, Vertices, Triangles, Normals, UV, Colors, Tangents, true);
+		Terrain->CreateMeshSection(0, TrueVertices, Triangles, TrueNormals, UV, Colors, Tangents, true);
 		Terrain->SetMaterial(0, TerrainMaterial);
 		// ReSharper disable once CppExpressionWithoutSideEffects
 		Terrain->ContainsPhysicsTriMeshData(true);
@@ -222,7 +221,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 // Called when the game starts
 void ANoiseGenerator::BeginPlay()
 {
-	// Super::BeginPlay();
+	UpdateWorld();
 
 	if (bApplyRandomSeed)
 		RandomiseSeed();
@@ -235,7 +234,7 @@ void ANoiseGenerator::BeginPlay()
 
 	for (int i = 0; i < MapSizeX * MapSizeY; i++)
 	{
-		AsyncTask(ENamedThreads::HighTaskPriority, [&, i]()
+		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
 		{
 			SetUpChunk(i);
 			GenerateTerrain(i);
@@ -247,6 +246,30 @@ void ANoiseGenerator::UpdateGenerator()
 {
 	NoiseGen.SetFractalOctaves(Octaves);
 	NoiseGen.SetFractalLacunarity(Lacunarity);
+}
+
+void ANoiseGenerator::UpdateWorld()
+{
+	const int ChunksNumber = MapSizeX * MapSizeY;
+
+	World.Reserve(ChunksNumber);
+
+	for (int y = 0; y < MapSizeY; y++)
+	{
+		for (int x = 0; x < MapSizeX; x++)
+		{
+			const FName ObjectName = *FString::Printf(TEXT("TerrainMesh%i"), x + y * MapSizeY);
+			World.Add(FChunkProperties());
+
+			World[x + y * MapSizeY].TerrainMesh = NewObject<UProceduralMeshComponent>(
+				this, UProceduralMeshComponent::StaticClass(), ObjectName);
+			World[x + y * MapSizeY].TerrainMesh->bUseAsyncCooking = true;
+			World[x + y * MapSizeY].TerrainMesh->RegisterComponent();
+			World[x + y * MapSizeY].ChunkNumberX = x;
+			World[x + y * MapSizeY].ChunkNumberY = y;
+		}
+	}
+	RootComponent = World[0].TerrainMesh;
 }
 
 void ANoiseGenerator::RandomiseSeed()
