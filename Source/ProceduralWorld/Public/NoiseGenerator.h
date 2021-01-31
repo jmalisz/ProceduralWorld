@@ -34,7 +34,7 @@ public:
 	float Lacunarity = 2.f;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings", Meta=(ClampMin=0.0001f))
-	float NoiseScale = 1.f;
+	float NoiseScale = 0.2f;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	int Seed = 1337;
@@ -49,10 +49,10 @@ public:
 	int MapSizeY = 3;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
-	float DefaultVertexSize = 100.f;
+	UMaterialInstance* DefaultTerrainMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
-	UMaterialInstance* DefaultMaterial = nullptr;
+	UMaterialInstance* DefaultWaterMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
 	UCurveFloat* DefaultHeightCurve = nullptr;
@@ -74,6 +74,8 @@ private:
 
 	FastNoiseLite NoiseGen;
 	FCriticalSection ActorMutex;
+	float VertexSize = 100.f;
+	float HeightMultiplier = VertexSize * 10.f;
 	// How many rendered squares per chunk
 	int MapArrayWidth = 256;
 	int MapArrayHeight = 256;
@@ -84,8 +86,5 @@ private:
 	int NoiseArrayWidth = EdgeArrayWidth + 1;
 	int NoiseArrayHeight = EdgeArrayHeight + 1;
 
-	void UpdateGenerator();
 	void UpdateWorld();
-	void RandomiseSeed();
-	void SetUpChunk(int TerrainIndex);
 };

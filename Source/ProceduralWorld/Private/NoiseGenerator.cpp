@@ -3,12 +3,7 @@
 
 #include "NoiseGenerator.h"
 
-#include <tuple>
-
-
 #include "ProceduralMeshComponent.h"
-#include "KismetProceduralMeshLibrary.h"
-#include "Kismet/KismetMathLibrary.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 // Sets default values for this component's properties
@@ -20,16 +15,52 @@ ANoiseGenerator::ANoiseGenerator()
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
 }
 
+// Called when the game starts
+void ANoiseGenerator::BeginPlay()
+{
+	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(MapSizeX * MapArrayWidth * VertexSize / 2,
+                                                                      MapSizeY * MapArrayHeight * VertexSize / 2,
+                                                                      10000.f), FRotator(0.f));
+	UpdateWorld();
+
+	if (bApplyRandomSeed)
+	{
+		Seed = rand();
+		NoiseGen.SetSeed(Seed);
+	}
+
+	if (!World.GetData())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Terrain generation: HeightCurve not set"));
+		return;
+	}
+
+	for (int i = 0; i < MapSizeX * MapSizeY; i++)
+	{
+		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
+        {
+            GenerateTerrain(i);
+        });
+	}
+}
+
+// Called every frame, unused
+void ANoiseGenerator::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+}
 
 TArray<float> ANoiseGenerator::CreateNoiseData(float LocalOffsetX, float LocalOffsetY)
 {
+	// Set up generator variables
+	NoiseGen.SetFractalOctaves(Octaves);
+	NoiseGen.SetFractalLacunarity(Lacunarity);
+
+	TArray<float> NoiseData;
 	const float HalfNoiseArrayWidth = NoiseArrayWidth / 2;
 	const float HalfNoiseArrayHeight = NoiseArrayHeight / 2;
 
-	TArray<float> NoiseData;
-
 	NoiseData.Reserve(NoiseArrayWidth * NoiseArrayHeight);
-	UpdateGenerator();
 
 	if (NoiseScale <= 0)
 		NoiseScale = 0.0001f;
@@ -89,24 +120,25 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	const FChunkProperties* WorldHandle = &World[TerrainIndex];
 
 	// Get required data from struct
-	UProceduralMeshComponent* Terrain = WorldHandle->TerrainMesh;
-	const float HeightMultiplier = WorldHandle->HeightMultiplier;
-	const UCurveFloat* HeightCurve = WorldHandle->HeightCurve;
 	UMaterialInstance* TerrainMaterial = WorldHandle->TerrainMaterial;
-	const float VertexSize = WorldHandle->VertexSize;
+	UProceduralMeshComponent* Terrain = WorldHandle->TerrainMesh;
+	UMaterialInstance* WaterMaterial = WorldHandle->WaterMaterial;
+	UProceduralMeshComponent* Water = WorldHandle->WaterMesh;
+	const UCurveFloat* HeightCurve = WorldHandle->HeightCurve;
 	const float ChunkOffsetX = WorldHandle->ChunkNumberX * MapArrayWidth;
 	const float ChunkOffsetY = WorldHandle->ChunkNumberY * MapArrayHeight;
 
 	// Data for procedural mesh
 	TArray<float> NoiseArray = CreateNoiseData(ChunkOffsetX, ChunkOffsetY);
 	TArray<FVector> Vertices;
-	TArray<FVector> TrueVertices;
-	TArray<int32> Triangles;
+	TArray<FVector> WaterVertices;
 	TArray<FVector2D> UV;
 	TArray<FVector> Normals;
+	TArray<FVector> WaterNormals;
+	TArray<int32> Triangles;
+	TArray<FVector> TrueVertices;
 	TArray<FVector> TrueNormals;
-	TArray<FProcMeshTangent> Tangents;
-	TArray<FColor> Colors;
+
 	//Starting position for chunk
 	const float StartingPositionX = WorldHandle->ChunkNumberX ? ChunkOffsetX * VertexSize : 0;
 	const float StartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * VertexSize : 0;
@@ -121,14 +153,14 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 
 	// The numbers are number of times array is accessed inside loop
 	Vertices.Reserve(NoiseArrayWidth * NoiseArrayHeight);
-	// TrueVertices.Reserve((NoiseArrayWidth - 1) * (NoiseArrayHeight - 1));
-	// Triangles.Reserve(6 * MapSizeX * MapSizeX);
+	Triangles.Reserve(6 * MapSizeX * MapSizeX);
 	UV.Reserve(NoiseArrayWidth * NoiseArrayHeight);
-	// Normals.Reserve(NoiseArrayWidth * NoiseArrayHeight);
 	Normals.Init(FVector(0.f), NoiseArrayWidth * NoiseArrayHeight);
-	// TrueNormals.Reserve((NoiseArrayWidth - 2) * (NoiseArrayHeight - 2));
-	Tangents.Reserve(NoiseArrayWidth * NoiseArrayHeight);
-	Colors.Reserve(NoiseArrayWidth * NoiseArrayHeight);
+	TrueVertices.Reserve((NoiseArrayWidth - 2) * (NoiseArrayHeight - 2));
+	TrueNormals.Reserve((NoiseArrayWidth - 2) * (NoiseArrayHeight - 2));
+	
+	WaterVertices.Reserve((NoiseArrayWidth - 2) * (NoiseArrayHeight - 2));
+	WaterNormals.Reserve((NoiseArrayWidth - 2) * (NoiseArrayHeight - 2));
 
 	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread calculation started: MeshName - %s"), *Terrain->GetName());
 
@@ -173,6 +205,8 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 
 			if (x * y > 0)
 			{
+				WaterVertices.Add(FVector(StartingPositionX + VertexSize * (x - 1), StartingPositionY + VertexSize * (y - 1), 0.f));
+				WaterNormals.Add(FVector(0.f, 0.f, 1.f));
 				TrueVertices.Add(Vertices[x + y * NoiseArrayHeight]);
 				TrueNormals.Add(Normals[x + y * NoiseArrayHeight]);
 				UV.Add(FVector2D(UVStartingPositionX + (x - 1) * 1.0f, UVStartingPositionY + (y - 1) * 1.0f));
@@ -209,43 +243,18 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 
 	AsyncTask(ENamedThreads::GameThread, [=]()
 	{
-		Terrain->CreateMeshSection(0, TrueVertices, Triangles, TrueNormals, UV, Colors, Tangents, true);
+		Terrain->CreateMeshSection(0, TrueVertices, Triangles, TrueNormals, UV, TArray<FColor>(),
+		                           TArray<FProcMeshTangent>(), true);
 		Terrain->SetMaterial(0, TerrainMaterial);
 		// ReSharper disable once CppExpressionWithoutSideEffects
 		Terrain->ContainsPhysicsTriMeshData(true);
+
+		Water->CreateMeshSection(0, WaterVertices, Triangles, WaterNormals, UV, TArray<FColor>(),
+                           TArray<FProcMeshTangent>(), false);
+		Water->SetMaterial(0, WaterMaterial);
 	});
 
 	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread completed: %s"), *Terrain->GetName());
-}
-
-// Called when the game starts
-void ANoiseGenerator::BeginPlay()
-{
-	UpdateWorld();
-
-	if (bApplyRandomSeed)
-		RandomiseSeed();
-
-	if (!World.GetData())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Terrain generation: HeightCurve not set"));
-		return;
-	}
-
-	for (int i = 0; i < MapSizeX * MapSizeY; i++)
-	{
-		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
-		{
-			SetUpChunk(i);
-			GenerateTerrain(i);
-		});
-	}
-}
-
-void ANoiseGenerator::UpdateGenerator()
-{
-	NoiseGen.SetFractalOctaves(Octaves);
-	NoiseGen.SetFractalLacunarity(Lacunarity);
 }
 
 void ANoiseGenerator::UpdateWorld()
@@ -258,39 +267,32 @@ void ANoiseGenerator::UpdateWorld()
 	{
 		for (int x = 0; x < MapSizeX; x++)
 		{
-			const FName ObjectName = *FString::Printf(TEXT("TerrainMesh%i"), x + y * MapSizeY);
+			const FName TerrainObjectName = *FString::Printf(TEXT("TerrainMesh%i"), x + y * MapSizeY);
 			World.Add(FChunkProperties());
-
+			
 			World[x + y * MapSizeY].TerrainMesh = NewObject<UProceduralMeshComponent>(
-				this, UProceduralMeshComponent::StaticClass(), ObjectName);
+				this, UProceduralMeshComponent::StaticClass(), TerrainObjectName);
 			World[x + y * MapSizeY].TerrainMesh->bUseAsyncCooking = true;
 			World[x + y * MapSizeY].TerrainMesh->RegisterComponent();
+
+			const FName WaterObjectName = *FString::Printf(TEXT("WaterMesh%i"), x + y * MapSizeY);
+			World.Add(FChunkProperties());
+			
+			World[x + y * MapSizeY].WaterMesh = NewObject<UProceduralMeshComponent>(
+                this, UProceduralMeshComponent::StaticClass(), WaterObjectName);
+			World[x + y * MapSizeY].WaterMesh->RegisterComponent();
+			
 			World[x + y * MapSizeY].ChunkNumberX = x;
 			World[x + y * MapSizeY].ChunkNumberY = y;
+			if(!World[x + y * MapSizeY].HeightCurve)
+				World[x + y * MapSizeY].HeightCurve = DefaultHeightCurve;
+			if(!World[x + y * MapSizeY].TerrainMaterial)
+				World[x + y * MapSizeY].TerrainMaterial = DefaultTerrainMaterial;
+			if(!World[x + y * MapSizeY].WaterMaterial)
+				World[x + y * MapSizeY].WaterMaterial = DefaultWaterMaterial;
 		}
 	}
 	RootComponent = World[0].TerrainMesh;
 }
 
-void ANoiseGenerator::RandomiseSeed()
-{
-	Seed = rand();
-	NoiseGen.SetSeed(Seed);
-}
 
-// Used to set global default properties of chunks, if they are not set
-void ANoiseGenerator::SetUpChunk(int TerrainIndex)
-{
-	FChunkProperties* WorldHandle = &World[TerrainIndex];
-
-	if (!WorldHandle->TerrainMaterial)
-		WorldHandle->TerrainMaterial = DefaultMaterial;
-	if (!WorldHandle->HeightCurve)
-		WorldHandle->HeightCurve = DefaultHeightCurve;
-}
-
-// Called every frame
-void ANoiseGenerator::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}

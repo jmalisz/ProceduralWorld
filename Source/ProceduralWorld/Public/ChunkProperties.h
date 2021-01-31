@@ -11,18 +11,13 @@ struct FChunkProperties
 	
 	FChunkProperties(){}
 
-	// Vertex X and Y size, generally shouldn't be made lower than 100.f
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
-	float VertexSize = 100.f;
-
-	// Required to make game looks normal for character model, 10 times Vertex size seems to work best
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
-	float HeightMultiplier = VertexSize * 10.f;
-	
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
+	UPROPERTY(EditAnywhere, Category="World settings")
 	UMaterialInstance* TerrainMaterial = nullptr;
+
+	UPROPERTY(EditAnywhere, Category="World settings")
+	UMaterialInstance* WaterMaterial = nullptr;
 	
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
+	UPROPERTY(EditAnywhere, Category="World settings")
 	UCurveFloat* HeightCurve = nullptr;
 	
 	// Chunk column number
@@ -35,4 +30,7 @@ struct FChunkProperties
 	
 	UPROPERTY()
 	UProceduralMeshComponent* TerrainMesh = nullptr;
+
+	UPROPERTY()
+	UProceduralMeshComponent* WaterMesh = nullptr;
 };
