@@ -3,8 +3,10 @@
 #pragma once
 
 #include "FastNoiseLite.h"
-#include "ProceduralMeshComponent.h"
 #include "CoreMinimal.h"
+
+#include "ChunkProperties.h"
+
 
 #include "NoiseGenerator.generated.h"
 
@@ -20,10 +22,10 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
-	int OffsetX = 0;
+	int GlobalOffsetX = 0;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
-	int OffsetY = 0;
+	int GlobalOffsetY = 0;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings", Meta=(ClampMin=1, ClampMax=10))
 	int Octaves = 5;
@@ -32,7 +34,7 @@ public:
 	float Lacunarity = 2.f;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings", Meta=(ClampMin=0.0001f))
-	float NoiseScale = 1.f;
+	float NoiseScale = 0.2f;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	int Seed = 1337;
@@ -40,39 +42,49 @@ public:
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	bool bApplyRandomSeed = false;
 
-	UPROPERTY(EditAnywhere, Category="Noise settings")
-	float VertexSize = 100.f;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	int MapSizeX = 3;
 
-	UPROPERTY(EditAnywhere, Category="Noise settings")
-	float HeightMultiplier = VertexSize * 10.f;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	int MapSizeY = 3;
 
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
-	UMaterialInstance* TerrainMaterial = nullptr;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UMaterialInstance* DefaultTerrainMaterial = nullptr;
 
-	UPROPERTY(EditAnywhere, Category="Terrain settings")
-	UCurveFloat* HeightCurve = nullptr;
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UMaterialInstance* DefaultWaterMaterial = nullptr;
+
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UCurveFloat* DefaultHeightCurve = nullptr;
 
 	UFUNCTION(BlueprintCallable)
-	TArray<float> CreateNoiseData();
+	TArray<float> CreateNoiseData(float LocalOffsetX, float LocalOffsetY);
 
 	UFUNCTION(BlueprintCallable)
 	UTexture2D* CreateNoiseMap(TArray<float> NoiseArray);
 
 	UFUNCTION(BlueprintCallable)
-	void GenerateTerrain(TArray<float> NoiseArray);
+	void GenerateTerrain(int TerrainIndex);
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 private:
 	UPROPERTY(VisibleAnywhere)
-	UProceduralMeshComponent* Terrain = nullptr;
+	TArray<FChunkProperties> World;
 
 	FastNoiseLite NoiseGen;
-	int MapTileWidth = 256;
-	int MapTileHeight = 256;
-	int NoiseArrayWidth = MapTileWidth + 1;
-	int NoiseArrayHeight = MapTileHeight + 1;
+	FCriticalSection ActorMutex;
+	float VertexSize = 100.f;
+	float HeightMultiplier = VertexSize * 10.f;
+	// How many rendered squares per chunk
+	int MapArrayWidth = 256;
+	int MapArrayHeight = 256;
+	// Added border for edge normal calculation
+	int EdgeArrayWidth = MapArrayWidth + 2;
+	int EdgeArrayHeight = MapArrayHeight + 2;
+	// Number of vertices/noise values
+	int NoiseArrayWidth = EdgeArrayWidth + 1;
+	int NoiseArrayHeight = EdgeArrayHeight + 1;
 
-	void UpdateGenerator();
-	void RandomiseSeed();
+	void UpdateWorld();
 };
