@@ -43,25 +43,34 @@ public:
 	bool bApplyRandomSeed = false;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
-	int MapSizeX = 3;
+	bool bApplyFalloffMap = false;
 
-	UPROPERTY(EditAnywhere, Category="Map settings")
-	int MapSizeY = 3;
+	UPROPERTY(EditAnywhere, Category="Map settings", Meta=(ClampMin=1, ClampMax=20))
+	int MapSize = 3;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
 	UMaterialInstance* DefaultTerrainMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
+	UCurveFloat* DefaultHeightCurve = nullptr;
+
+	UPROPERTY(EditAnywhere, Category="Map settings")
 	UMaterialInstance* DefaultWaterMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
-	UCurveFloat* DefaultHeightCurve = nullptr;
+	UCurveFloat* SeaHeightCurve = nullptr;
 
 	UFUNCTION(BlueprintCallable)
 	TArray<float> CreateNoiseData(float LocalOffsetX, float LocalOffsetY);
 
 	UFUNCTION(BlueprintCallable)
-	UTexture2D* CreateNoiseMap(TArray<float> NoiseArray);
+	TArray<float> CreateFalloffMap();
+
+	UFUNCTION(BlueprintCallable)
+	UTexture2D* CreateNoiseTexture(TArray<float> NoiseArray);
+
+	UFUNCTION(BlueprintCallable)
+	UTexture2D* CreateFalloffTexture(TArray<float> FalloffArray);
 
 	UFUNCTION(BlueprintCallable)
 	void GenerateTerrain(int TerrainIndex);
@@ -71,20 +80,18 @@ protected:
 private:
 	UPROPERTY(VisibleAnywhere)
 	TArray<FChunkProperties> World;
+	TArray<float> WorldMap;
 
 	FastNoiseLite NoiseGen;
 	FCriticalSection ActorMutex;
 	float VertexSize = 100.f;
 	float HeightMultiplier = VertexSize * 10.f;
-	// How many rendered squares per chunk
-	int MapArrayWidth = 256;
-	int MapArrayHeight = 256;
+	// How many rendered squares per chunk, MapArraySize x MapArraySize
+	int MapArraySize = 256;
 	// Added border for edge normal calculation
-	int EdgeArrayWidth = MapArrayWidth + 2;
-	int EdgeArrayHeight = MapArrayHeight + 2;
+	int EdgeArraySize = MapArraySize + 2;
 	// Number of vertices/noise values
-	int NoiseArrayWidth = EdgeArrayWidth + 1;
-	int NoiseArrayHeight = EdgeArrayHeight + 1;
+	int NoiseArraySize = EdgeArraySize + 1;
 
 	void UpdateWorld();
 };
