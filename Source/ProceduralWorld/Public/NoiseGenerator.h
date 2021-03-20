@@ -6,7 +6,7 @@
 #include "CoreMinimal.h"
 
 #include "ChunkProperties.h"
-
+#include "DropletProperties.h"
 
 #include "NoiseGenerator.generated.h"
 
@@ -37,7 +37,7 @@ public:
 	float NoiseScale = 0.2f;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
-	int Seed = 1337;
+	int MapSeed = 1337;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	bool bApplyRandomSeed = false;
@@ -60,6 +60,34 @@ public:
 	UPROPERTY(EditAnywhere, Category="Map settings")
 	UCurveFloat* SeaHeightCurve = nullptr;
 
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	bool bApplyErosion = true;
+	
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	int ErosionSeed = 1337;
+
+	// Keeping it as a float because of multiplication and division
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	float ErosionRadius = 3;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	float Gravity = 9.81f;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	float ErosionSpeed = 0.3f;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	float DepositionSpeed = 0.3f;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	float EvaporationSpeed = 0.3f;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	int DropletLifetime = 30;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	int IterationNumber = 1;
+	
 	UFUNCTION(BlueprintCallable)
 	TArray<float> CreateNoiseData(float LocalOffsetX, float LocalOffsetY);
 
@@ -74,6 +102,9 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void GenerateTerrain(int TerrainIndex);
+
+	UFUNCTION(BlueprintCallable)
+	TArray<FVector> SimulateErosion(TArray<FVector> HeightMap);
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
