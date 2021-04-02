@@ -15,6 +15,10 @@ ANoiseGenerator::ANoiseGenerator()
 
 	NoiseGen.SetFractalType(FastNoiseLite::FractalType_FBm);
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+
+	ErosionSimulator = CreateDefaultSubobject<UErosionSimulator>(TEXT("ErosionSimulator"));
+	
+	// ErosionSimulator->RegisterComponent();
 }
 
 // Called when the game starts
@@ -40,14 +44,15 @@ void ANoiseGenerator::BeginPlay()
 	}
 
 	WorldMap = CreateFalloffMap();
+	GenerateTerrain(0);
 
-	for (int i = 0; i < FMath::Square(MapSize); i++)
-	{
-		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
-		{
-			GenerateTerrain(i);
-		});
-	}
+	// for (int i = 0; i < FMath::Square(MapSize); i++)
+	// {
+	// 	AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
+	// 	{
+	// 		GenerateTerrain(i);
+	// 	});
+	// }
 }
 
 // Called every frame, unused
@@ -205,135 +210,6 @@ UTexture2D* ANoiseGenerator::CreateFalloffTexture(TArray<float> FalloffArray)
 	return FalloffMap;
 }
 
-TArray<FVector> ANoiseGenerator::SimulateErosion(TArray<FVector> HeightMap)
-{
-	TArray<FVector> ErodedTerrain = HeightMap;
-	FRandomStream RandomStream(ErosionSeed);
-
-	for (int Iteration = 0; Iteration < IterationNumber; Iteration++)
-	{
-		FDropletProperties* Droplet = new FDropletProperties;
-
-		Droplet->GridPositionX = RandomStream.RandRange(ErosionRadius, NoiseArraySize - ErosionRadius - 1);
-		Droplet->GridPositionY = RandomStream.RandRange(ErosionRadius, NoiseArraySize - ErosionRadius - 1);
-		Droplet->Speed = 1.f;
-
-		// UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread, droplet: x - %d, y - %d"), Droplet->GridPositionX,
-		//        Droplet->GridPositionY);
-
-		for (
-			int DropletLife = 0;
-			DropletLife < DropletLifetime;
-			DropletLife++
-		)
-		{
-			int DropletPosition = Droplet->GridPositionX + Droplet->GridPositionY * NoiseArraySize;
-			int NextPositionX = 0;
-			int NextPositionY = 0;
-			float LowestHeight = HeightMultiplier * DefaultHeightCurve->GetFloatValue(1) * 100.f;
-
-			// Choosing next direction
-			for (int x = Droplet->GridPositionX - 1; x <= Droplet->GridPositionX + 1; x++)
-			{
-				for (
-					int y = (Droplet->GridPositionY - 1) * NoiseArraySize;
-					y <= (Droplet->GridPositionY + 1) * NoiseArraySize;
-					y += NoiseArraySize
-				)
-				{
-					if (x < 0 || y < 0 || x >= NoiseArraySize || y >= FMath::Square(NoiseArraySize))
-						continue;
-					if (ErodedTerrain[x + y].Z < LowestHeight)
-					{
-						LowestHeight = ErodedTerrain[x + y].Z;
-						NextPositionX = x;
-						NextPositionY = y / NoiseArraySize;
-					}
-				}
-			}
-
-			const float HeightDelta = ErodedTerrain[NextPositionX + NextPositionY * NoiseArraySize].Z - ErodedTerrain[
-				DropletPosition].Z;
-
-			const float SedimentCapacity = FMath::Max(Droplet->Speed, 0.1f);
-
-			if (Droplet->Sediment > SedimentCapacity || HeightDelta > 0) // Deposition
-			{
-				const float Deposition = HeightDelta > 0
-					                         ? FMath::Min(HeightDelta, Droplet->Sediment)
-					                         : (Droplet->Sediment - SedimentCapacity) * DepositionSpeed;
-
-				Droplet->Sediment -= Deposition;
-				ErodedTerrain[DropletPosition].Z += Deposition;
-				
-				// for (int x = Droplet->GridPositionX - 1; x < Droplet->GridPositionX + 1; x++)
-				// {
-				// 	for (
-				// 		int y = (Droplet->GridPositionY - 1) * NoiseArraySize;
-				// 		y < (Droplet->GridPositionY + 1) * NoiseArraySize;
-				// 		y += NoiseArraySize
-				// 	)
-				// 	{
-				// 		if (x < 0 || y < 0 || x >= NoiseArraySize || y / NoiseArraySize >= NoiseArraySize)
-				// 			continue;
-				// 		// const float DistanceDelta = float((ErosionRadius - FMath::Max(
-				// 		// 	abs(x - Droplet->GridPositionX),
-				// 		// 	abs(y / NoiseArraySize - Droplet->GridPositionY)
-				// 		// )) / ErosionRadius);
-				// 		// const float DistanceDelta = 1 - FMath::Max(abs(x - Droplet->GridPositionX), abs(y - Droplet->GridPositionY * NoiseArraySize) / NoiseArraySize) / ErosionRadius;						
-				// 		ErodedTerrain[x + y].Z += Deposition / 9;
-				// 	}
-				// }
-
-				// If there's no enough sediment to cover height difference then drop everything and droplet evaporates
-				if (HeightDelta > Deposition)
-				{
-					break;
-				}
-			}
-			else // Erosion
-			{
-				for (int x = Droplet->GridPositionX - ErosionRadius + 1; x < Droplet->GridPositionX + ErosionRadius; x++
-				)
-				{
-					for (
-						int y = (Droplet->GridPositionY - ErosionRadius + 1) * NoiseArraySize;
-						y < (Droplet->GridPositionY + ErosionRadius) * NoiseArraySize;
-						y += NoiseArraySize
-					)
-					{
-						if (x < 0 || y < 0 || x >= NoiseArraySize || y / NoiseArraySize >= NoiseArraySize)
-							continue;
-						// const float DistanceDelta = float((ErosionRadius - FMath::Max(
-						// 	abs(x - Droplet->GridPositionX),
-						// 	abs(y / NoiseArraySize - Droplet->GridPositionY)
-						// )) / ErosionRadius);
-						const float DistanceDelta = 1 - FMath::Max(abs(x - Droplet->GridPositionX),
-						                                           abs(y - Droplet->GridPositionY * NoiseArraySize) /
-						                                           NoiseArraySize) / ErosionRadius;
-						const float ErosionAmount = FMath::Min(
-							(SedimentCapacity - Droplet->Sediment) * DistanceDelta * ErosionSpeed, -HeightDelta);
-
-						Droplet->Sediment += ErosionAmount;
-						ErodedTerrain[x + y].Z -= ErosionAmount;
-					}
-				}
-			}
-			Droplet->GridPositionX = NextPositionX;
-			Droplet->GridPositionY = NextPositionY;
-			Droplet->Speed = FMath::Sqrt(2 * Gravity * -HeightDelta + FMath::Square(Droplet->Speed) / 2);
-			
-			if(isnan(Droplet->Speed))
-			{
-				Droplet->Speed = 1;
-			}
-		}
-	}
-
-	return ErodedTerrain;
-}
-
-
 void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 {
 	const float FalloffSquareSideLength = NoiseArraySize * MapSize;
@@ -418,7 +294,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	}
 
 	if (bApplyErosion)
-		Vertices = SimulateErosion(Vertices);
+		ErosionSimulator->SimulateErosion(Vertices);
 
 	for (int y = 0; y < EdgeArraySize; y++)
 	{
