@@ -44,15 +44,14 @@ void ANoiseGenerator::BeginPlay()
 	}
 
 	WorldMap = CreateFalloffMap();
-	GenerateTerrain(0);
 
-	// for (int i = 0; i < FMath::Square(MapSize); i++)
-	// {
-	// 	AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
-	// 	{
-	// 		GenerateTerrain(i);
-	// 	});
-	// }
+	for (int i = 0; i < FMath::Square(MapSize); i++)
+	{
+		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
+		{
+			GenerateTerrain(i);
+		});
+	}
 }
 
 // Called every frame, unused
@@ -288,6 +287,11 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 			else
 				Height = HeightMultiplier * HeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize]);
 
+			// if (x == 0 || x == NoiseArraySize - 1 || y == 0 || y == NoiseArraySize - 1)
+			// {
+			// 	Height = HeightMultiplier * HeightCurve->GetFloatValue(1);
+			// }
+			
 			Vertices.Add(FVector(StartingPositionX + VertexSize * (x - 1), StartingPositionY + VertexSize * (y - 1),
 			                     Height));
 		}
@@ -312,8 +316,9 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 
 			Normals[x + y * NoiseArraySize] += CrossProduct1;
 			Normals[x + 1 + y * NoiseArraySize] += CrossProduct1;
-			Normals[x + 1 + y * NoiseArraySize] += CrossProduct2;
 			Normals[x + (y + 1) * NoiseArraySize] += CrossProduct1;
+			
+			Normals[x + 1 + y * NoiseArraySize] += CrossProduct2;
 			Normals[x + (y + 1) * NoiseArraySize] += CrossProduct2;
 			Normals[x + 1 + (y + 1) * NoiseArraySize] += CrossProduct2;
 

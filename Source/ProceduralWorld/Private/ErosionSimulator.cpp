@@ -32,16 +32,28 @@ void UErosionSimulator::InitializeComponent()
 
 		float WeightedSum = 0.f;
 
+		if (ErosionCentreX < 2 || ErosionCentreX > ErosionMapSize - 3 || ErosionCentreY <
+			2 || ErosionCentreY > ErosionMapSize - 3)
+		{
+			ErosionIndicesMap.AddDefaulted();
+			ErosionIndicesMap[i].Init(0, 0);
+		
+			ErosionWeightsMap.AddDefaulted();
+			ErosionWeightsMap[i].Init(0.f, 0);
+			continue;
+		}
+
 		for (int y = ErosionCentreY - ErosionRadius; y <= ErosionCentreY + ErosionRadius; y++)
 		{
 			for (int x = ErosionCentreX - ErosionRadius; x <= ErosionCentreX + ErosionRadius; x++)
 			{
 				const float DistanceX = ErosionCentreX - x, DistanceY = ErosionCentreY - y;
 				const float DistanceWeight = FMath::Max(
-					0.f, ErosionRadius - FMath::Sqrt(DistanceX * DistanceX + DistanceY * DistanceY)
+					0.f, 1 - FMath::Sqrt(DistanceX * DistanceX + DistanceY * DistanceY) / ErosionRadius
 				);
 
-				if (x < 0 || x > ErosionMapSize || y < 0 || y > ErosionMapSize || DistanceWeight <= 0)
+				if (x < 2 || x > ErosionMapSize - 3 || y < 2 || y > ErosionMapSize -
+					3 || DistanceWeight == 0.f)
 					continue;
 
 				VertexOffsets.Add(FIntPoint(x, y));
@@ -95,23 +107,35 @@ FGradientAndHeight* UErosionSimulator::CalculateGradientAndHeight(TArray<FVector
 
 void UErosionSimulator::DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float SquareOffsetX,
                                         float SquareOffsetY, float HeightDelta, float& Sediment,
-                                        float SedimentCapacity) const
+                                        float SedimentCapacity)
 {
-	const float DepositAmount = HeightDelta < 0
-		                            ? FMath::Min(abs(HeightDelta), Sediment)
+	const float DepositAmount = HeightDelta > 0
+		                            ? FMath::Min(HeightDelta, Sediment)
 		                            : (Sediment - SedimentCapacity) * DepositionSpeed;
 	Sediment -= DepositAmount;
 
-	HeightMap[CombinedIndexPosition].Z += DepositAmount * (1 - SquareOffsetX) * (1 - SquareOffsetY);
-	HeightMap[CombinedIndexPosition + 1].Z += DepositAmount * SquareOffsetX * (1 - SquareOffsetY);
-	HeightMap[CombinedIndexPosition + ErosionMapSize].Z += DepositAmount * (1 - SquareOffsetX) * SquareOffsetY;
-	HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z += DepositAmount * SquareOffsetX * SquareOffsetY;
+	// const float TotalSquareHeight = abs(HeightMap[CombinedIndexPosition].Z) + abs(HeightMap[CombinedIndexPosition + 1].Z) + abs(HeightMap[CombinedIndexPosition + ErosionMapSize].Z) + abs(HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z);
+
+	// HeightMap[CombinedIndexPosition].Z += DepositAmount * (1 - SquareOffsetX) * (1 - SquareOffsetY);
+	// HeightMap[CombinedIndexPosition + 1].Z += DepositAmount * SquareOffsetX * (1 - SquareOffsetY);
+	// HeightMap[CombinedIndexPosition + ErosionMapSize].Z += DepositAmount * (1 - SquareOffsetX) * SquareOffsetY;
+	// HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z += DepositAmount * SquareOffsetX * SquareOffsetY;
+
+	// HeightMap[CombinedIndexPosition].Z += DepositAmount * abs(HeightMap[CombinedIndexPosition].Z / TotalSquareHeight);
+	// HeightMap[CombinedIndexPosition + 1].Z += DepositAmount * abs(HeightMap[CombinedIndexPosition + 1].Z / TotalSquareHeight);
+	// HeightMap[CombinedIndexPosition + ErosionMapSize].Z += DepositAmount * abs(HeightMap[CombinedIndexPosition + ErosionMapSize].Z / TotalSquareHeight);
+	// HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z += DepositAmount * abs(HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z / TotalSquareHeight);
+
+	HeightMap[CombinedIndexPosition].Z += DepositAmount * 0.25f;
+	HeightMap[CombinedIndexPosition + 1].Z += DepositAmount * 0.25f;
+	HeightMap[CombinedIndexPosition + ErosionMapSize].Z += DepositAmount * 0.25f;
+	HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z += DepositAmount * 0.25f;
 }
 
 void UErosionSimulator::ErodeTerrain(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta,
-                                     float& Sediment, float SedimentCapacity) const
+                                     float& Sediment, float SedimentCapacity)
 {
-	const float ErosionAmount = FMath::Max(FMath::Min((SedimentCapacity - Sediment) * ErosionSpeed, HeightDelta), 0.f);
+	const float ErosionAmount = FMath::Max(FMath::Min((SedimentCapacity - Sediment) * ErosionSpeed, -HeightDelta), 0.f);
 
 	for (int i = 0; i < ErosionIndicesMap[CombinedIndexPosition].Num(); i++)
 	{
@@ -132,8 +156,8 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 
 	for (IterationIndex = 0; IterationIndex < IterationNumber; IterationIndex++)
 	{
-		float RealPositionX = RandomStream.FRandRange(0.f, ErosionMapSize - 1);
-		float RealPositionY = RandomStream.FRandRange(0.f, ErosionMapSize - 1);
+		float RealPositionX = RandomStream.FRandRange(ErosionRadius, ErosionMapSize - ErosionRadius);
+		float RealPositionY = RandomStream.FRandRange(ErosionRadius, ErosionMapSize - ErosionRadius);
 		float DirectionX = 0.f;
 		float DirectionY = 0.f;
 		float Speed = 1.f;
@@ -157,39 +181,38 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 			DirectionY = DirectionY * Inertia - CurrentGradientAndHeight->GradientY * (1 - Inertia);
 
 			// Normalize droplet direction
-			const float CombinedDirection = FMath::Sqrt(DirectionX * DirectionX + DirectionY * DirectionY);
-
-			if (CombinedDirection != 0.f)
-			{
-				DirectionX /= CombinedDirection;
-				DirectionY /= CombinedDirection;
-			}
-
+			const float CombinedDirection = FMath::Max(
+				0.01f, FMath::Sqrt(DirectionX * DirectionX + DirectionY * DirectionY));
+			DirectionX /= CombinedDirection;
+			DirectionY /= CombinedDirection;
 			RealPositionX += DirectionX;
 			RealPositionY += DirectionY;
 
 			// Check if stopped in a pit or droplet flowed out of the map
-			if (DirectionX == 0 && DirectionY == 0.f || RealPositionX < 0 || RealPositionX > ErosionMapSize - 1 ||
-				RealPositionY < 0 || RealPositionY > ErosionMapSize - 1 || isnan(Speed))
+			if (DirectionX == 0 && DirectionY == 0.f || RealPositionX < 2 || RealPositionX > ErosionMapSize
+				- 3 || RealPositionY < 2 || RealPositionY > ErosionMapSize - 3)
 				break;
 
 			// Recalculate height at new position
 			const FGradientAndHeight* NewGradientAndHeight = CalculateGradientAndHeight(
 				HeightMap, RealPositionX, RealPositionY);
 
-			const float HeightDelta = CurrentGradientAndHeight->Height - NewGradientAndHeight->Height;
+			const float HeightDelta = NewGradientAndHeight->Height - CurrentGradientAndHeight->Height;
 
-			const float SedimentCapacity = FMath::Max(HeightDelta, MinSedimentCapacity) * Speed * Water *
+			const float SedimentCapacity = FMath::Max(-HeightDelta / this->VertexSize, MinSedimentCapacity) * Speed *
+				Water *
 				SedimentCapacityFactor;
 
-			if (Sediment > SedimentCapacity || HeightDelta < 0)
+
+			if (Sediment > SedimentCapacity || HeightDelta > 0)
 				DepositSediment(HeightMap, CombinedIndexPosition, SquareOffsetX, SquareOffsetY, HeightDelta, Sediment,
 				                SedimentCapacity);
 			else
-				ErodeTerrain(HeightMap, CombinedIndexPosition, HeightDelta, Sediment, SedimentCapacity);
+			ErodeTerrain(HeightMap, CombinedIndexPosition, HeightDelta, Sediment, SedimentCapacity);
 
 			// Calculate droplet speed from potential and kinetic energy
-			Speed = FMath::Sqrt(2 * Gravity * HeightDelta + Speed * Speed);
+			// Speed = FMath::Max(FMath::Sqrt(2 * Gravity * -HeightDelta + Speed * Speed), 1.f);
+			Speed = FMath::Max(2 * Gravity * -HeightDelta * Speed * Speed, 0.f);
 			Water *= 1 - EvaporationSpeed;
 		}
 	}

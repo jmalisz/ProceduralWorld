@@ -94,16 +94,18 @@ public:
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=1, ClampMax=1000000))
 	int IterationNumber = 70000;
 
+	int ErosionMapSize = 259;
+	float VertexSize = 100.f;
+
 private:
 	virtual void InitializeComponent() override;
 	FGradientAndHeight* CalculateGradientAndHeight(TArray<FVector>& HeightMap, float RealPositionX, float RealPositionY);
-	void DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float SquareOffsetX, float SquareOffsetY, float HeightDelta, float& Sediment, float SedimentCapacity ) const;
-	void ErodeTerrain(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta, float& Sediment, float SedimentCapacity) const;
+	void DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float SquareOffsetX, float SquareOffsetY, float HeightDelta, float& Sediment, float SedimentCapacity );
+	void ErodeTerrain(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta, float& Sediment, float SedimentCapacity);
 
 	// Global indexes make simulation tracking easier
 	int IterationIndex = 0;
 	int DropletLifeIndex = 0;
-	int ErosionMapSize = 258;
 	// An array of index offsets used for erosion
 	TArray<TArray<int>> ErosionIndicesMap;
 	// An array of weights applied to previous array of indexes
