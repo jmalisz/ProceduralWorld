@@ -6,34 +6,6 @@
 #include "Components/ActorComponent.h"
 #include "ErosionSimulator.generated.h"
 
-// USTRUCT()
-// struct FWaterDroplet
-// {
-// 	GENERATED_BODY()
-//
-// 	FWaterDroplet()
-// 	{
-// 	}
-//
-// 	void Reset()
-// 	{
-// 		Speed = 1.f;
-// 		DirectionX = 0.f;
-// 		DirectionY = 0.f;
-// 		
-// 		Sediment = 0.f;
-// 		Water = 1.f;
-// 	}
-// 	int IndexX = 0;
-// 	int IndexY = 0;
-// 	int CombinedIndex = IndexX + IndexY * this.ErosionMapSize;
-//
-// 	
-// 	float Speed = 1.f;
-// 	float Sediment = 0.f;
-// 	float Water = 1.f;
-// };
-
 USTRUCT()
 struct FGradientAndHeight
 {
@@ -63,19 +35,27 @@ public:
 	UPROPERTY(EditAnywhere, Category="Erosion settings")
 	int ErosionSeed = 1337;
 
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	bool bBlockBoundaryErosion = true;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=2, ClampMax=20))
+	int BorderSize = 3;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings")
+	bool bApplyBlur = true;
+
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=1.f, ClampMax=1000.f))
+	float BaseWaterSpeed = 4.f;
+	
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=1.f))
 	float Inertia = 0.4f;
 
-	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=10.f))
-	float Gravity = 4.f;
-
-	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=10.f))
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.1f, ClampMax=1000.f))
 	float SedimentCapacityFactor = 4.f;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=10.f))
 	float MinSedimentCapacity = 0.01f;
 
-	// Keeping it as a float because of multiplication and division
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=2, ClampMax=10))
 	int ErosionRadius = 6;
 
@@ -96,11 +76,11 @@ public:
 
 	int ErosionMapSize = 259;
 	float VertexSize = 100.f;
-
 private:
 	virtual void InitializeComponent() override;
+	void GaussianBlur(TArray<FVector>& HeightMap);
 	FGradientAndHeight* CalculateGradientAndHeight(TArray<FVector>& HeightMap, float RealPositionX, float RealPositionY);
-	void DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float SquareOffsetX, float SquareOffsetY, float HeightDelta, float& Sediment, float SedimentCapacity );
+	void DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta, float& Sediment, float SedimentCapacity );
 	void ErodeTerrain(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta, float& Sediment, float SedimentCapacity);
 
 	// Global indexes make simulation tracking easier
