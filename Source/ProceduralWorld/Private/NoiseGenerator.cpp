@@ -3,6 +3,8 @@
 
 #include "NoiseGenerator.h"
 
+
+#include "DropletProperties.h"
 #include "ProceduralMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 
@@ -13,6 +15,10 @@ ANoiseGenerator::ANoiseGenerator()
 
 	NoiseGen.SetFractalType(FastNoiseLite::FractalType_FBm);
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+
+	ErosionSimulator = CreateDefaultSubobject<UErosionSimulator>(TEXT("ErosionSimulator"));
+	
+	// ErosionSimulator->RegisterComponent();
 }
 
 // Called when the game starts
@@ -27,8 +33,8 @@ void ANoiseGenerator::BeginPlay()
 
 	if (bApplyRandomSeed)
 	{
-		Seed = rand();
-		NoiseGen.SetSeed(Seed);
+		MapSeed = rand();
+		NoiseGen.SetSeed(MapSeed);
 	}
 
 	if (!World.GetData())
@@ -141,7 +147,7 @@ TArray<float> ANoiseGenerator::CreateFalloffMap()
 				// Linear equation from 1 to 0 in the area
 				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
 					100.f - (HalfSquareSide - 100.f) / 100.f;
-			// Water between player map and border mountains
+				// Water between player map and border mountains
 			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= WaterSquareBoundary)
 			{
 				// Linear equation from 0 to 1 in the area
@@ -152,7 +158,7 @@ TArray<float> ANoiseGenerator::CreateFalloffMap()
 				if (SeaHeightCurve)
 					DataValue = SeaHeightCurve->GetFloatValue(DataValue);
 			}
-			// Mountain in center of the map
+				// Mountain in center of the map
 			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) <= 50.f)
 			{
 				// Parabolic equation from 0 to 1 and back to 0 in the area
@@ -280,11 +286,19 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 						FalloffSquareSideLength]);
 			else
 				Height = HeightMultiplier * HeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize]);
+
+			// if (x == 0 || x == NoiseArraySize - 1 || y == 0 || y == NoiseArraySize - 1)
+			// {
+			// 	Height = HeightMultiplier * HeightCurve->GetFloatValue(1);
+			// }
 			
 			Vertices.Add(FVector(StartingPositionX + VertexSize * (x - 1), StartingPositionY + VertexSize * (y - 1),
 			                     Height));
 		}
 	}
+
+	if (bApplyErosion)
+		ErosionSimulator->SimulateErosion(Vertices);
 
 	for (int y = 0; y < EdgeArraySize; y++)
 	{
@@ -302,8 +316,9 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 
 			Normals[x + y * NoiseArraySize] += CrossProduct1;
 			Normals[x + 1 + y * NoiseArraySize] += CrossProduct1;
-			Normals[x + 1 + y * NoiseArraySize] += CrossProduct2;
 			Normals[x + (y + 1) * NoiseArraySize] += CrossProduct1;
+			
+			Normals[x + 1 + y * NoiseArraySize] += CrossProduct2;
 			Normals[x + (y + 1) * NoiseArraySize] += CrossProduct2;
 			Normals[x + 1 + (y + 1) * NoiseArraySize] += CrossProduct2;
 
