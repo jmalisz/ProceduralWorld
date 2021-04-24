@@ -6,7 +6,6 @@
 #include "CoreMinimal.h"
 
 #include "ChunkProperties.h"
-#include "DropletProperties.h"
 #include "ErosionSimulator.h"
 
 #include "NoiseGenerator.generated.h"

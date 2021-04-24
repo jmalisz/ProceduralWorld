@@ -3,8 +3,6 @@
 
 #include "NoiseGenerator.h"
 
-
-#include "DropletProperties.h"
 #include "ProceduralMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 
