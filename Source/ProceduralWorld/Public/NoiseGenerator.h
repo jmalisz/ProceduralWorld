@@ -4,11 +4,35 @@
 
 #include "FastNoiseLite.h"
 #include "CoreMinimal.h"
+#include "ProceduralMeshComponent.h"
 
-#include "ChunkProperties.h"
 #include "ErosionSimulator.h"
 
 #include "NoiseGenerator.generated.h"
+
+USTRUCT()
+struct FChunkProperties
+{
+	GENERATED_BODY()
+
+	FChunkProperties()
+	{
+	}
+
+	// Chunk column number
+	UPROPERTY()
+	int ChunkNumberX = 0;
+
+	// Chunk row number
+	UPROPERTY()
+	int ChunkNumberY = 0;
+
+	UPROPERTY()
+	UProceduralMeshComponent* TerrainMesh = nullptr;
+
+	UPROPERTY()
+	UProceduralMeshComponent* WaterMesh = nullptr;
+};
 
 UCLASS(BlueprintType, Blueprintable)
 class PROCEDURALWORLD_API ANoiseGenerator : public AActor
@@ -16,10 +40,7 @@ class PROCEDURALWORLD_API ANoiseGenerator : public AActor
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this component's properties
 	ANoiseGenerator();
-
-	virtual void Tick(float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	int GlobalOffsetX = 0;
@@ -42,65 +63,59 @@ public:
 	UPROPERTY(EditAnywhere, Category="Noise settings")
 	bool bApplyRandomSeed = false;
 
-	UPROPERTY(EditAnywhere, Category="Map settings")
-	bool bApplyFalloffMap = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mask settings")
+	bool bApplyMask = false;
 
-	UPROPERTY(EditAnywhere, Category="Map settings", Meta=(ClampMin=1, ClampMax=20))
-	int MapSize = 3;
-
-	UPROPERTY(EditAnywhere, Category="Map settings")
-	UMaterialInstance* DefaultTerrainMaterial = nullptr;
-
-	UPROPERTY(EditAnywhere, Category="Map settings")
-	UCurveFloat* DefaultHeightCurve = nullptr;
-
-	UPROPERTY(EditAnywhere, Category="Map settings")
-	UMaterialInstance* DefaultWaterMaterial = nullptr;
-
-	UPROPERTY(EditAnywhere, Category="Map settings")
-	UCurveFloat* SeaHeightCurve = nullptr;
+	UPROPERTY(EditAnywhere, Category="Mask settings")
+	UCurveFloat* MoatHeightCurve = nullptr;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings")
 	bool bApplyErosion = true;
-		
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Map settings", Meta=(ClampMin=1, ClampMax=20))
+	int MapSize = 3;
+
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UMaterialInstance* TerrainMaterial = nullptr;
+
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UCurveFloat* TerrainHeightCurve = nullptr;
+
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	UMaterialInstance* WaterMaterial = nullptr;
+
 	UFUNCTION(BlueprintCallable)
 	TArray<float> CreateNoiseData(float LocalOffsetX, float LocalOffsetY);
 
 	UFUNCTION(BlueprintCallable)
-	TArray<float> CreateFalloffMap();
-
-	UFUNCTION(BlueprintCallable)
-	UTexture2D* CreateNoiseTexture(TArray<float> NoiseArray);
-
-	UFUNCTION(BlueprintCallable)
-	UTexture2D* CreateFalloffTexture(TArray<float> FalloffArray);
+	TArray<float> CreateMask();
 
 	UFUNCTION(BlueprintCallable)
 	void GenerateTerrain(int TerrainIndex);
 
 protected:
-	// Called when the game starts
-	virtual void BeginPlay() override;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category="Erosion settings")
-	UErosionSimulator* ErosionSimulator;
-	
-private:
-	UPROPERTY()
-	TArray<FChunkProperties> World;
-
-	TArray<float> WorldMap;
-
-	FastNoiseLite NoiseGen;
-	FCriticalSection ActorMutex;
-	float VertexSize = 100.f;
-	float HeightMultiplier = VertexSize * 10.f;
 	// How many rendered squares per chunk, MapArraySize x MapArraySize
 	int MapArraySize = 256;
 	// Added border for edge normal calculation
 	int EdgeArraySize = MapArraySize + 2;
 	// Number of vertices/noise values
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
 	int NoiseArraySize = EdgeArraySize + 1;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category="Erosion settings")
+	UErosionSimulator* ErosionSimulator;
+
+private:
+	UPROPERTY()
+	TArray<FChunkProperties> World;
+	TArray<float> WorldMap;
+
+	FastNoiseLite NoiseGen;
+	// Size of square made of 2 triangles
+	float VertexSize = 100.f;
+	// Multiplier for ThirdPerson module
+	float HeightMultiplier = VertexSize * 10.f;
 
 	void UpdateWorld();
+	virtual void BeginPlay() override;
 };

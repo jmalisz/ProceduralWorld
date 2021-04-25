@@ -1,12 +1,10 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "NoiseGenerator.h"
 
 #include "ProceduralMeshComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 
-// Sets default values for this component's properties
 ANoiseGenerator::ANoiseGenerator()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -15,47 +13,89 @@ ANoiseGenerator::ANoiseGenerator()
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
 
 	ErosionSimulator = CreateDefaultSubobject<UErosionSimulator>(TEXT("ErosionSimulator"));
-	
-	// ErosionSimulator->RegisterComponent();
 }
 
-// Called when the game starts
-void ANoiseGenerator::BeginPlay()
+// Sets up chunks in the world
+void ANoiseGenerator::UpdateWorld()
 {
-	const float WorldCenter = MapSize * MapArraySize * VertexSize / 2;
+	const int ChunksNumber = FMath::Square(MapSize);
 
-	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(WorldCenter, WorldCenter, 10000.f),
-	                                                          FRotator(0.f)
-	);
-	UpdateWorld();
+	World.Reserve(ChunksNumber);
 
-	if (bApplyRandomSeed)
+	for (int y = 0; y < MapSize; y++)
 	{
-		MapSeed = rand();
-		NoiseGen.SetSeed(MapSeed);
-	}
-
-	if (!World.GetData())
-	{
-		UE_LOG(LogTemp, Error, TEXT("Terrain generation: HeightCurve not set"));
-		return;
-	}
-
-	WorldMap = CreateFalloffMap();
-
-	for (int i = 0; i < FMath::Square(MapSize); i++)
-	{
-		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
+		for (int x = 0; x < MapSize; x++)
 		{
-			GenerateTerrain(i);
-		});
+			const FName TerrainObjectName = *FString::Printf(TEXT("TerrainMesh%i"), x + y * MapSize);
+			World.Add(FChunkProperties());
+
+			World[x + y * MapSize].TerrainMesh = NewObject<UProceduralMeshComponent>(
+				this, UProceduralMeshComponent::StaticClass(), TerrainObjectName);
+			World[x + y * MapSize].TerrainMesh->bUseAsyncCooking = true;
+			World[x + y * MapSize].TerrainMesh->RegisterComponent();
+
+			const FName WaterObjectName = *FString::Printf(TEXT("WaterMesh%i"), x + y * MapSize);
+			World.Add(FChunkProperties());
+
+			World[x + y * MapSize].WaterMesh = NewObject<UProceduralMeshComponent>(
+				this, UProceduralMeshComponent::StaticClass(), WaterObjectName);
+			World[x + y * MapSize].WaterMesh->RegisterComponent();
+
+			World[x + y * MapSize].ChunkNumberX = x;
+			World[x + y * MapSize].ChunkNumberY = y;
+		}
 	}
+	RootComponent = World[0].TerrainMesh;
 }
 
-// Called every frame, unused
-void ANoiseGenerator::Tick(float DeltaTime)
+// Creates global map for influencing global world structure
+TArray<float> ANoiseGenerator::CreateFalloffMap()
 {
-	Super::Tick(DeltaTime);
+	TArray<float> MapData;
+	const float SquareSideLength = NoiseArraySize * MapSize;
+	const float BorderMountainSquareBoundary = SquareSideLength / 2.f - 100.f;
+	const float WaterSquareBoundary = SquareSideLength / 2.f - 200.f;
+	const float HalfSquareSide = SquareSideLength / 2.f;
+
+	float DataValue = 0;
+
+	MapData.Reserve(FMath::Square(SquareSideLength));
+
+	for (int y = 0; y < SquareSideLength; y++)
+	{
+		for (int x = 0; x < SquareSideLength; x++)
+		{
+			DataValue = 0;
+
+			// Mountains blocking map
+			if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= BorderMountainSquareBoundary)
+				// Linear equation from 1 to 0 in the area
+				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
+					100.f - (HalfSquareSide - 100.f) / 100.f;
+
+				// Water between map center and border mountains
+			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= WaterSquareBoundary)
+			{
+				// Linear equation from 0 to 1 in the area
+				DataValue = (HalfSquareSide - 100.f) / 100.f - FMath::Max(
+						abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
+					100.f;
+				// Parabolic curve from 0 to -1 and back to 0 based on previous equation in the area
+				if (MoatHeightCurve) DataValue = MoatHeightCurve->GetFloatValue(DataValue);
+			}
+
+				// Mountain in the center of the map
+			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) <= 50.f)
+			{
+				// Parabolic equation from 0 to 1 and back to 0 in the area
+				DataValue = 1 - FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) / 50.f;
+			}
+
+			MapData.Add(DataValue);
+		}
+	}
+
+	return MapData;
 }
 
 // Creates perlin noise array for selected chunk based on it's offset
@@ -85,128 +125,7 @@ TArray<float> ANoiseGenerator::CreateNoiseData(float LocalOffsetX, float LocalOf
 	return NoiseData;
 }
 
-// Utility function exposed and used in blueprint for noise visualization
-UTexture2D* ANoiseGenerator::CreateNoiseTexture(TArray<float> NoiseArray)
-{
-	UTexture2D* NoiseMap = UTexture2D::CreateTransient(NoiseArraySize, NoiseArraySize);
-	TArray<FColor> ColorMap;
-
-	ColorMap.Reserve(NoiseArraySize * NoiseArraySize);
-
-	for (int y = 0; y < NoiseArraySize; y++)
-	{
-		for (int x = 0; x < NoiseArraySize; x++)
-		{
-			const int Grayscale = FMath::Lerp(0, 255, NoiseArray[x + y * NoiseArraySize]);
-			ColorMap.Add(FColor(Grayscale, Grayscale, Grayscale));
-		}
-	}
-
-	if (!NoiseMap)
-		return nullptr;
-
-#if WITH_EDITORONLY_DATA
-	NoiseMap->MipGenSettings = TMGS_NoMipmaps;
-#endif
-	NoiseMap->NeverStream = true;
-	NoiseMap->SRGB = 0;
-
-	FTexture2DMipMap& Mip = NoiseMap->PlatformData->Mips[0];
-	void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
-
-	FMemory::Memcpy(Data, ColorMap.GetData(), ColorMap.GetAllocatedSize());
-	Mip.BulkData.Unlock();
-	NoiseMap->UpdateResource();
-
-	return NoiseMap;
-}
-
-// Creates global map for influencing global world structure
-TArray<float> ANoiseGenerator::CreateFalloffMap()
-{
-	TArray<float> MapData;
-	const float SquareSideLength = NoiseArraySize * MapSize;
-	const float BorderMountainSquareBoundary = SquareSideLength / 2.f - 100.f;
-	const float WaterSquareBoundary = SquareSideLength / 2.f - 200.f;
-	const float HalfSquareSide = SquareSideLength / 2.f;
-
-	float DataValue = 0;
-
-	MapData.Reserve(FMath::Square(SquareSideLength));
-
-	for (int y = 0; y < SquareSideLength; y++)
-	{
-		for (int x = 0; x < SquareSideLength; x++)
-		{
-			DataValue = 0;
-
-			// Mountains blocking map
-			if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= BorderMountainSquareBoundary)
-				// Linear equation from 1 to 0 in the area
-				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
-					100.f - (HalfSquareSide - 100.f) / 100.f;
-				// Water between player map and border mountains
-			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= WaterSquareBoundary)
-			{
-				// Linear equation from 0 to 1 in the area
-				DataValue = (HalfSquareSide - 100.f) / 100.f - FMath::Max(
-						abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
-					100.f;
-				// Parabolic curve from 0 to -1 and back to 0 based on previous equation in the area
-				if (SeaHeightCurve)
-					DataValue = SeaHeightCurve->GetFloatValue(DataValue);
-			}
-				// Mountain in center of the map
-			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) <= 50.f)
-			{
-				// Parabolic equation from 0 to 1 and back to 0 in the area
-				DataValue = 1 - FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) / 50.f;
-			}
-
-			MapData.Add(DataValue);
-		}
-	}
-
-	return MapData;
-}
-
-UTexture2D* ANoiseGenerator::CreateFalloffTexture(TArray<float> FalloffArray)
-{
-	const float SquareSideLength = NoiseArraySize * MapSize;
-
-	UTexture2D* FalloffMap = UTexture2D::CreateTransient(SquareSideLength, SquareSideLength);
-	TArray<FColor> ColorMap;
-
-	ColorMap.Reserve(FMath::Square(SquareSideLength));
-
-	for (int y = 0; y < SquareSideLength; y++)
-	{
-		for (int x = 0; x < SquareSideLength; x++)
-		{
-			const int Grayscale = FMath::Lerp(0, 255, FalloffArray[x + y * SquareSideLength]);
-			ColorMap.Add(FColor(Grayscale, Grayscale, Grayscale));
-		}
-	}
-
-	if (!FalloffMap)
-		return nullptr;
-
-#if WITH_EDITORONLY_DATA
-	FalloffMap->MipGenSettings = TMGS_NoMipmaps;
-#endif
-	FalloffMap->NeverStream = true;
-	FalloffMap->SRGB = 0;
-
-	FTexture2DMipMap& Mip = FalloffMap->PlatformData->Mips[0];
-	void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
-
-	FMemory::Memcpy(Data, ColorMap.GetData(), ColorMap.GetAllocatedSize());
-	Mip.BulkData.Unlock();
-	FalloffMap->UpdateResource();
-
-	return FalloffMap;
-}
-
+// Generates procedural mesh that is used for terrain and water
 void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 {
 	const float FalloffSquareSideLength = NoiseArraySize * MapSize;
@@ -216,11 +135,8 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	const FChunkProperties* WorldHandle = &World[TerrainIndex];
 
 	// Get required data from struct
-	UMaterialInstance* TerrainMaterial = WorldHandle->TerrainMaterial;
 	UProceduralMeshComponent* Terrain = WorldHandle->TerrainMesh;
-	UMaterialInstance* WaterMaterial = WorldHandle->WaterMaterial;
 	UProceduralMeshComponent* Water = WorldHandle->WaterMesh;
-	const UCurveFloat* HeightCurve = WorldHandle->HeightCurve;
 	const float ChunkOffsetX = WorldHandle->ChunkNumberX * MapArraySize;
 	const float ChunkOffsetY = WorldHandle->ChunkNumberY * MapArraySize;
 	const float FalloffMapOffset = WorldHandle->ChunkNumberX * NoiseArraySize;
@@ -241,12 +157,6 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	const float StartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * VertexSize : 0;
 	const float UVStartingPositionX = WorldHandle->ChunkNumberX ? ChunkOffsetX * 1.f : 0;
 	const float UVStartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * 1.f : 0;
-
-	if (!World[TerrainIndex].HeightCurve)
-	{
-		UE_LOG(LogTemp, Error, TEXT("Terrain generation: HeightCurve not set"));
-		return;
-	}
 
 	// The numbers are number of times array is accessed inside loop
 	Vertices.Reserve(NoiseArraySizeSquared);
@@ -270,34 +180,29 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	 * y++;
 	 */
 
-	// First double loop allocates Vertex coordinate. There are 2 loops because triangles need immediate access to vertices.
+	// First double loop allocates vertices with border
 	for (int y = 0; y < NoiseArraySize; y++)
 	{
 		for (int x = 0; x < NoiseArraySize; x++)
 		{
-			float Height = 0.f;
+			float Height;
 
 			// Noise and World are clamped from 0 to 1 by HeightCurve
-			if (bApplyFalloffMap)
-				Height = HeightMultiplier * HeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize] +
+			if (bApplyMask)
+				Height = HeightMultiplier * TerrainHeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize] +
 					WorldMap[x + FalloffMapOffset + (y + WorldHandle->ChunkNumberY * NoiseArraySize) *
 						FalloffSquareSideLength]);
 			else
-				Height = HeightMultiplier * HeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize]);
+				Height = HeightMultiplier * TerrainHeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize]);
 
-			// if (x == 0 || x == NoiseArraySize - 1 || y == 0 || y == NoiseArraySize - 1)
-			// {
-			// 	Height = HeightMultiplier * HeightCurve->GetFloatValue(1);
-			// }
-			
 			Vertices.Add(FVector(StartingPositionX + VertexSize * (x - 1), StartingPositionY + VertexSize * (y - 1),
 			                     Height));
 		}
 	}
 
-	if (bApplyErosion)
-		ErosionSimulator->SimulateErosion(Vertices);
+	if (bApplyErosion) ErosionSimulator->SimulateErosion(Vertices);
 
+	// Second double loop calculates normal values, UVs and strips the border
 	for (int y = 0; y < EdgeArraySize; y++)
 	{
 		for (int x = 0; x < EdgeArraySize; x++)
@@ -315,7 +220,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 			Normals[x + y * NoiseArraySize] += CrossProduct1;
 			Normals[x + 1 + y * NoiseArraySize] += CrossProduct1;
 			Normals[x + (y + 1) * NoiseArraySize] += CrossProduct1;
-			
+
 			Normals[x + 1 + y * NoiseArraySize] += CrossProduct2;
 			Normals[x + (y + 1) * NoiseArraySize] += CrossProduct2;
 			Normals[x + 1 + (y + 1) * NoiseArraySize] += CrossProduct2;
@@ -332,7 +237,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 		}
 	}
 
-	// Second double loop combines correct vertices into triangles. 
+	// Third double loop combines correct vertices into triangles. 
 	for (int y = 0; y < MapArraySize; y++)
 	{
 		for (int x = 0; x < MapArraySize; x++)
@@ -355,10 +260,9 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	for (int i = 0; i < TrueNormals.Num(); i++)
 	{
 		TrueNormals[i].Normalize();
-		if (!TrueNormals[i].IsNormalized())
-		UE_LOG(LogTemp, Warning, TEXT("Normal is not normalized"));
 	}
 
+	// Creates objects in main thread, cause you cannot do that elsewhere
 	AsyncTask(ENamedThreads::GameThread, [=]()
 	{
 		Terrain->CreateMeshSection(0, TrueVertices, Triangles, TrueNormals, UV, TArray<FColor>(),
@@ -375,40 +279,35 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread completed: %s"), *Terrain->GetName());
 }
 
-void ANoiseGenerator::UpdateWorld()
+// Called when the game starts
+void ANoiseGenerator::BeginPlay()
 {
-	const int ChunksNumber = FMath::Square(MapSize);
+	const float WorldCenter = MapSize * MapArraySize * VertexSize / 2;
 
-	World.Reserve(ChunksNumber);
+	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(WorldCenter, WorldCenter, 11000.f),
+	                                                          FRotator(0.f)
+	);
+	UpdateWorld();
 
-	for (int y = 0; y < MapSize; y++)
+	if (bApplyRandomSeed)
 	{
-		for (int x = 0; x < MapSize; x++)
-		{
-			const FName TerrainObjectName = *FString::Printf(TEXT("TerrainMesh%i"), x + y * MapSize);
-			World.Add(FChunkProperties());
-
-			World[x + y * MapSize].TerrainMesh = NewObject<UProceduralMeshComponent>(
-				this, UProceduralMeshComponent::StaticClass(), TerrainObjectName);
-			World[x + y * MapSize].TerrainMesh->bUseAsyncCooking = true;
-			World[x + y * MapSize].TerrainMesh->RegisterComponent();
-
-			const FName WaterObjectName = *FString::Printf(TEXT("WaterMesh%i"), x + y * MapSize);
-			World.Add(FChunkProperties());
-
-			World[x + y * MapSize].WaterMesh = NewObject<UProceduralMeshComponent>(
-				this, UProceduralMeshComponent::StaticClass(), WaterObjectName);
-			World[x + y * MapSize].WaterMesh->RegisterComponent();
-
-			World[x + y * MapSize].ChunkNumberX = x;
-			World[x + y * MapSize].ChunkNumberY = y;
-			if (!World[x + y * MapSize].HeightCurve)
-				World[x + y * MapSize].HeightCurve = DefaultHeightCurve;
-			if (!World[x + y * MapSize].TerrainMaterial)
-				World[x + y * MapSize].TerrainMaterial = DefaultTerrainMaterial;
-			if (!World[x + y * MapSize].WaterMaterial)
-				World[x + y * MapSize].WaterMaterial = DefaultWaterMaterial;
-		}
+		MapSeed = rand();
+		NoiseGen.SetSeed(MapSeed);
 	}
-	RootComponent = World[0].TerrainMesh;
+
+	if (!TerrainHeightCurve)
+	{
+		UE_LOG(LogTemp, Error, TEXT("BeginPlay: TerrainHeightCurve not set"));
+		return;
+	}
+
+	WorldMap = CreateMask();
+
+	for (int i = 0; i < FMath::Square(MapSize); i++)
+	{
+		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
+		{
+			GenerateTerrain(i);
+		});
+	}
 }
