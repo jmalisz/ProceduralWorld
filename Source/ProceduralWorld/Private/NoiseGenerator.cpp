@@ -13,6 +13,8 @@ ANoiseGenerator::ANoiseGenerator()
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
 
 	ErosionSimulator = CreateDefaultSubobject<UErosionSimulator>(TEXT("ErosionSimulator"));
+	ErosionSimulator->ErosionMapSize = NoiseArraySize;
+	ErosionSimulator->VertexSize = VertexSize;
 }
 
 // Sets up chunks in the world
@@ -48,8 +50,19 @@ void ANoiseGenerator::UpdateWorld()
 	RootComponent = World[0].TerrainMesh;
 }
 
-// Creates global map for influencing global world structure
-TArray<float> ANoiseGenerator::CreateFalloffMap()
+// Update generator and simulator seed
+void ANoiseGenerator::UpdateGenerator()
+{
+	if (bApplyRandomSeed)
+	{
+		MapSeed = rand();
+	}
+	NoiseGen.SetSeed(MapSeed);
+	ErosionSimulator->ErosionSeed = MapSeed;
+}
+
+// Creates global mask for influencing global world structure
+TArray<float> ANoiseGenerator::CreateMask()
 {
 	TArray<float> MapData;
 	const float SquareSideLength = NoiseArraySize * MapSize;
@@ -279,7 +292,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread completed: %s"), *Terrain->GetName());
 }
 
-// Called when the game starts
+// Called when the game starts, starts async terrain generations
 void ANoiseGenerator::BeginPlay()
 {
 	const float WorldCenter = MapSize * MapArraySize * VertexSize / 2;
@@ -288,12 +301,7 @@ void ANoiseGenerator::BeginPlay()
 	                                                          FRotator(0.f)
 	);
 	UpdateWorld();
-
-	if (bApplyRandomSeed)
-	{
-		MapSeed = rand();
-		NoiseGen.SetSeed(MapSeed);
-	}
+	UpdateGenerator();
 
 	if (!TerrainHeightCurve)
 	{

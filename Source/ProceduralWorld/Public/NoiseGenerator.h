@@ -57,12 +57,6 @@ public:
 	UPROPERTY(EditAnywhere, Category="Noise settings", Meta=(ClampMin=0.0001f))
 	float NoiseScale = 0.2f;
 
-	UPROPERTY(EditAnywhere, Category="Noise settings")
-	int MapSeed = 1337;
-
-	UPROPERTY(EditAnywhere, Category="Noise settings")
-	bool bApplyRandomSeed = false;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Mask settings")
 	bool bApplyMask = false;
 
@@ -72,8 +66,14 @@ public:
 	UPROPERTY(EditAnywhere, Category="Erosion settings")
 	bool bApplyErosion = true;
 
+	UPROPERTY(EditAnywhere, Category="Map settings")
+	bool bApplyRandomSeed = false;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Map settings", Meta=(ClampMin=1, ClampMax=20))
 	int MapSize = 3;
+
+	UPROPERTY(EditAnywhere, Category="Map settings", Meta=(ClampMin=1))
+	int MapSeed = 2021;
 
 	UPROPERTY(EditAnywhere, Category="Map settings")
 	UMaterialInstance* TerrainMaterial = nullptr;
@@ -88,6 +88,9 @@ public:
 	TArray<float> CreateNoiseData(float LocalOffsetX, float LocalOffsetY);
 
 	UFUNCTION(BlueprintCallable)
+	void UpdateGenerator();
+
+	UFUNCTION(BlueprintCallable)
 	TArray<float> CreateMask();
 
 	UFUNCTION(BlueprintCallable)
@@ -99,7 +102,7 @@ protected:
 	// Added border for edge normal calculation
 	int EdgeArraySize = MapArraySize + 2;
 	// Number of vertices/noise values
-	UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+	UPROPERTY(BlueprintReadWrite)
 	int NoiseArraySize = EdgeArraySize + 1;
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category="Erosion settings")

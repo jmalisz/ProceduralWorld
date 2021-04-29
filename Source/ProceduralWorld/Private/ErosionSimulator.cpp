@@ -9,6 +9,7 @@ UErosionSimulator::UErosionSimulator()
 	bWantsInitializeComponent = true;
 }
 
+// Initialization function, called before BeginPlay(). Calculates erosion indices and weights.
 void UErosionSimulator::InitializeComponent()
 {
 	// Total number of squares in map
@@ -67,6 +68,7 @@ void UErosionSimulator::InitializeComponent()
 	}
 }
 
+// Applies blur using mean filter
 void UErosionSimulator::GaussianBlur(TArray<FVector>& HeightMap)
 {
 	// Total number of squares in map
@@ -97,6 +99,7 @@ void UErosionSimulator::GaussianBlur(TArray<FVector>& HeightMap)
 	}
 }
 
+// Calculates gradient and height of current point inside vertex square
 FGradientAndHeight* UErosionSimulator::CalculateGradientAndHeight(TArray<FVector>& HeightMap, float RealPositionX,
                                                                   float RealPositionY)
 {
@@ -123,6 +126,7 @@ FGradientAndHeight* UErosionSimulator::CalculateGradientAndHeight(TArray<FVector
 	return GradientAndHeight;
 }
 
+// Deposits water droplet sediment based on parameters
 void UErosionSimulator::DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta,
                                         float& Sediment, float SedimentCapacity)
 {
@@ -137,15 +141,18 @@ void UErosionSimulator::DepositSediment(TArray<FVector>& HeightMap, int Combined
 	HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z += DepositAmount * 0.25f;
 }
 
+// Erodes terrain and gathers sediment to droplet
 void UErosionSimulator::ErodeTerrain(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta,
                                      float& Sediment, float SedimentCapacity)
 {
 	const float ErosionAmount = FMath::Max(FMath::Min((SedimentCapacity - Sediment) * ErosionSpeed, -HeightDelta), 0.f);
 
+	// Uses precalculated vertices for each vertex on the map
 	for (int i = 0; i < ErosionIndicesMap[CombinedIndexPosition].Num(); i++)
 	{
 		const int ErodedVertex = ErosionIndicesMap[CombinedIndexPosition][i];
 
+		// Applies boundaries to each map chunk in order to keep seams between them
 		if ((ErodedVertex / ErosionMapSize < BorderSize || ErodedVertex / ErosionMapSize > ErosionMapSize - (BorderSize
 			+ 1) || ErodedVertex % ErosionMapSize < BorderSize || ErodedVertex % ErosionMapSize > ErosionMapSize - (
 			BorderSize + 1)) && bBlockBoundaryErosion)
@@ -159,7 +166,7 @@ void UErosionSimulator::ErodeTerrain(TArray<FVector>& HeightMap, int CombinedInd
 	}
 }
 
-
+// Main function, responsible for simulating droplet erosion
 void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 {
 	// TArray<FVector> ErodedTerrain = HeightMap;
@@ -185,19 +192,20 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 				HeightMap, RealPositionX, RealPositionY
 			);
 
+			// Calculate direction of fastest descent
 			DirectionX = DirectionX * Inertia - CurrentGradientAndHeight->GradientX * (1 - Inertia);
 			DirectionY = DirectionY * Inertia - CurrentGradientAndHeight->GradientY * (1 - Inertia);
 
 			// Normalize droplet direction
 			const float CombinedDirection = FMath::Max(
 				0.01f, FMath::Sqrt(DirectionX * DirectionX + DirectionY * DirectionY));
-
 			DirectionX /= CombinedDirection;
 			DirectionY /= CombinedDirection;
+			
 			RealPositionX += DirectionX;
 			RealPositionY += DirectionY;
 
-			// Check if stopped in a pit or droplet flowed out of the map
+			// Check if droplet stopped in a pit or flowed out of the map chunk (or entered chunk border)
 			if (DirectionX == 0.f && DirectionY == 0.f || (RealPositionX < BorderSize || RealPositionX > ErosionMapSize
 				- (BorderSize + 1) || RealPositionY < BorderSize || RealPositionY > ErosionMapSize - (BorderSize + 1
 				)) && bBlockBoundaryErosion)
@@ -206,7 +214,7 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 			// Recalculate height at new position
 			const FGradientAndHeight* NewGradientAndHeight = CalculateGradientAndHeight(
 				HeightMap, RealPositionX, RealPositionY);
-
+			
 			const float HeightDelta = NewGradientAndHeight->Height - CurrentGradientAndHeight->Height;
 
 			const float SedimentCapacity = FMath::Max(-HeightDelta, MinSedimentCapacity) * Speed *
@@ -217,7 +225,7 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 			else
 				ErodeTerrain(HeightMap, CombinedIndexPosition, HeightDelta, Sediment, SedimentCapacity);
 
-			// Calculate droplet speed from potential and kinetic energy
+			// Calculate droplet speed as an approximation based on slope
 			Speed = FMath::Max(-HeightDelta * BaseWaterSpeed, 0.f);
 			Water *= 1 - EvaporationSpeed;
 		}
