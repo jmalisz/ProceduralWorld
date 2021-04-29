@@ -33,9 +33,6 @@ public:
 	void SimulateErosion(TArray<FVector>& HeightMap);
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings")
-	int ErosionSeed = 1337;
-
-	UPROPERTY(EditAnywhere, Category="Erosion settings")
 	bool bBlockBoundaryErosion = true;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=2, ClampMax=20))
@@ -74,8 +71,11 @@ public:
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=1, ClampMax=1000000))
 	int IterationNumber = 70000;
 
-	int ErosionMapSize = 259;
-	float VertexSize = 100.f;
+	// Should be set up by parent
+	int ErosionMapSize;
+	float VertexSize;
+	int ErosionSeed;
+	
 private:
 	virtual void InitializeComponent() override;
 	void GaussianBlur(TArray<FVector>& HeightMap);
