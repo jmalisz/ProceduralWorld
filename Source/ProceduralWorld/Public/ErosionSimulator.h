@@ -30,6 +30,9 @@ public:
 	UErosionSimulator();
 
 	UFUNCTION(BlueprintCallable)
+	void PrecalculateIndicesAndWeights();
+
+	UFUNCTION(BlueprintCallable)
 	void SimulateErosion(TArray<FVector>& HeightMap);
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings")
@@ -72,12 +75,11 @@ public:
 	int IterationNumber = 70000;
 
 	// Should be set up by parent
-	int ErosionMapSize;
+	int ChunkSize;
 	float VertexSize;
 	int ErosionSeed;
 	
 private:
-	virtual void InitializeComponent() override;
 	void GaussianBlur(TArray<FVector>& HeightMap);
 	FGradientAndHeight* CalculateGradientAndHeight(TArray<FVector>& HeightMap, float RealPositionX, float RealPositionY);
 	void DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta, float& Sediment, float SedimentCapacity );

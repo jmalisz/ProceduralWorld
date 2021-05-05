@@ -13,7 +13,7 @@ ANoiseGenerator::ANoiseGenerator()
 	NoiseGen.SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
 
 	ErosionSimulator = CreateDefaultSubobject<UErosionSimulator>(TEXT("ErosionSimulator"));
-	ErosionSimulator->ErosionMapSize = NoiseArraySize;
+	ErosionSimulator->ChunkSize = NoiseArraySize;
 	ErosionSimulator->VertexSize = VertexSize;
 }
 
@@ -141,6 +141,8 @@ TArray<float> ANoiseGenerator::CreateNoiseData(float LocalOffsetX, float LocalOf
 // Generates procedural mesh that is used for terrain and water
 void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 {
+	UE_LOG(LogTemp, Warning, TEXT("GenerateTerrain: thread started - %d"), TerrainIndex);
+
 	const float FalloffSquareSideLength = NoiseArraySize * MapSize;
 	const float NoiseArraySizeSquared = FMath::Square(NoiseArraySize);
 	const float NoiseArraySizeSquaredNoBoundary = FMath::Square(NoiseArraySize - 2);
@@ -182,8 +184,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	WaterVertices.Reserve(NoiseArraySizeSquaredNoBoundary);
 	WaterNormals.Reserve(NoiseArraySizeSquaredNoBoundary);
 
-	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread calculation started: MeshName - %s"), *Terrain->GetName());
-	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread: ChunkOffsetX - %f, ChunkOffsetY - %f"), ChunkOffsetX,
+	UE_LOG(LogTemp, Warning, TEXT("GenerateTerrain: ChunkOffsetX - %f, ChunkOffsetY - %f"), ChunkOffsetX,
 	       ChunkOffsetY);
 
 	/* Mesh building schematic. First triangle is TL->BL->TR, second one is TR->BL->BR.
@@ -289,7 +290,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 		Water->SetMaterial(0, WaterMaterial);
 	});
 
-	UE_LOG(LogTemp, Warning, TEXT("Terrain generation thread completed: %s"), *Terrain->GetName());
+	UE_LOG(LogTemp, Warning, TEXT("GenerateTerrain: thread completed - %s"), *Terrain->GetName());
 }
 
 // Called when the game starts, starts async terrain generations
@@ -297,11 +298,9 @@ void ANoiseGenerator::BeginPlay()
 {
 	const float WorldCenter = MapSize * MapArraySize * VertexSize / 2;
 
-	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(WorldCenter, WorldCenter, 11000.f),
+	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(WorldCenter, WorldCenter, 12000.f),
 	                                                          FRotator(0.f)
 	);
-	UpdateWorld();
-	UpdateGenerator();
 
 	if (!TerrainHeightCurve)
 	{
@@ -309,13 +308,21 @@ void ANoiseGenerator::BeginPlay()
 		return;
 	}
 
-	WorldMap = CreateMask();
+	UpdateWorld();
+	UpdateGenerator();
+
+	if (bApplyMask) WorldMap = CreateMask();
+	if (bApplyErosion) ErosionSimulator->PrecalculateIndicesAndWeights();
+
+	const time_t StartTime = time(nullptr);
 
 	for (int i = 0; i < FMath::Square(MapSize); i++)
 	{
-		AsyncTask(ENamedThreads::HighThreadPriority, [&, i]()
+		Async(EAsyncExecution::Thread, [&, i, StartTime]
 		{
 			GenerateTerrain(i);
+			if (i == FMath::Square(MapSize)) UE_LOG(LogTemp, Warning, TEXT("BeginPlay finished: elapsed time - %f"),
+			                                        difftime(time(nullptr), StartTime));
 		});
 	}
 }

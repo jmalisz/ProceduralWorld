@@ -9,11 +9,11 @@ UErosionSimulator::UErosionSimulator()
 	bWantsInitializeComponent = true;
 }
 
-// Initialization function, called before BeginPlay(). Calculates erosion indices and weights.
-void UErosionSimulator::InitializeComponent()
+// Initialization function, must be called before SimulateErosion. Calculates erosion indices and weights.
+void UErosionSimulator::PrecalculateIndicesAndWeights()
 {
-	// Total number of squares in map
-	const int TotalMapSize = ErosionMapSize * ErosionMapSize;
+	// Total number of squares in a chunk
+	const int TotalMapSize = ChunkSize * ChunkSize;
 	// Number of unique vertices for a given erosion radius
 	const int VerticesNumber = ErosionRadius * ErosionRadius * 4;
 
@@ -28,8 +28,8 @@ void UErosionSimulator::InitializeComponent()
 	// Loop over every vertex on map
 	for (int i = 0; i < TotalMapSize; i++)
 	{
-		const int ErosionCentreX = i % ErosionMapSize;
-		const int ErosionCentreY = i / ErosionMapSize;
+		const int ErosionCentreX = i % ChunkSize;
+		const int ErosionCentreY = i / ChunkSize;
 
 		float WeightedSum = 0.f;
 
@@ -42,7 +42,7 @@ void UErosionSimulator::InitializeComponent()
 					0.f, 1 - FMath::Sqrt(DistanceX * DistanceX + DistanceY * DistanceY) / ErosionRadius
 				);
 
-				if (x < 0 || x > ErosionMapSize - 1 || y < 0 || y > ErosionMapSize - 1 || DistanceWeight == 0.f)
+				if (x < 0 || x > ChunkSize - 1 || y < 0 || y > ChunkSize - 1 || DistanceWeight == 0.f)
 					continue;
 
 				VertexOffsets.Add(FIntPoint(x, y));
@@ -59,7 +59,7 @@ void UErosionSimulator::InitializeComponent()
 
 		for (int j = 0; j < VertexOffsets.Num(); j++)
 		{
-			ErosionIndicesMap[i][j] = VertexOffsets[j].X + VertexOffsets[j].Y * ErosionMapSize;
+			ErosionIndicesMap[i][j] = VertexOffsets[j].X + VertexOffsets[j].Y * ChunkSize;
 			ErosionWeightsMap[i][j] = VertexWeights[j] / WeightedSum;
 		}
 		
@@ -72,14 +72,14 @@ void UErosionSimulator::InitializeComponent()
 void UErosionSimulator::GaussianBlur(TArray<FVector>& HeightMap)
 {
 	// Total number of squares in map
-	const int TotalMapSize = ErosionMapSize * ErosionMapSize;
+	const int TotalMapSize = ChunkSize * ChunkSize;
 	const TArray<FVector> HeightMapCopy = HeightMap;
 
 	// Loop over every vertex on map
 	for (int CombinedIndex = 0; CombinedIndex < TotalMapSize; CombinedIndex++)
 	{
-		const int IndexX = CombinedIndex % ErosionMapSize;
-		const int IndexY = CombinedIndex / ErosionMapSize;
+		const int IndexX = CombinedIndex % ChunkSize;
+		const int IndexY = CombinedIndex / ChunkSize;
 		float NewValue = 0.f;
 
 		for (int y = IndexY - 1; y <= IndexY + 1; y++)
@@ -87,12 +87,12 @@ void UErosionSimulator::GaussianBlur(TArray<FVector>& HeightMap)
 			for (int x = IndexX - 1; x <= IndexX + 1; x++)
 			{
 				// Using regular box blur
-				if (x < 0 || x > ErosionMapSize - 1 || y < 0 || y > ErosionMapSize - 1)
+				if (x < 0 || x > ChunkSize - 1 || y < 0 || y > ChunkSize - 1)
 				{
 					NewValue += HeightMapCopy[CombinedIndex].Z;
 					continue;
 				}
-				NewValue += HeightMapCopy[x + y * ErosionMapSize].Z;
+				NewValue += HeightMapCopy[x + y * ChunkSize].Z;
 			}
 		}
 		HeightMap[CombinedIndex].Z = NewValue / 9.f;
@@ -111,11 +111,11 @@ FGradientAndHeight* UErosionSimulator::CalculateGradientAndHeight(TArray<FVector
 	const float SquareOffsetY = RealPositionY - IndexPositionY;
 
 	// Get square vertices heights
-	const int CombinedIndexPosition = IndexPositionX + IndexPositionY * ErosionMapSize;
+	const int CombinedIndexPosition = IndexPositionX + IndexPositionY * ChunkSize;
 	const float HeightNW = HeightMap[CombinedIndexPosition].Z;
 	const float HeightNE = HeightMap[CombinedIndexPosition + 1].Z;
-	const float HeightSW = HeightMap[CombinedIndexPosition + ErosionMapSize].Z;
-	const float HeightSE = HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z;
+	const float HeightSW = HeightMap[CombinedIndexPosition + ChunkSize].Z;
+	const float HeightSE = HeightMap[CombinedIndexPosition + 1 + ChunkSize].Z;
 
 	GradientAndHeight->GradientX = (HeightNE - HeightNW) * (1 - SquareOffsetY) + (HeightSE - HeightSW) * SquareOffsetY;
 	GradientAndHeight->GradientY = (HeightSW - HeightNW) * (1 - SquareOffsetX) + (HeightSE - HeightNE) * SquareOffsetX;
@@ -137,8 +137,8 @@ void UErosionSimulator::DepositSediment(TArray<FVector>& HeightMap, int Combined
 
 	HeightMap[CombinedIndexPosition].Z += DepositAmount * 0.25f;
 	HeightMap[CombinedIndexPosition + 1].Z += DepositAmount * 0.25f;
-	HeightMap[CombinedIndexPosition + ErosionMapSize].Z += DepositAmount * 0.25f;
-	HeightMap[CombinedIndexPosition + 1 + ErosionMapSize].Z += DepositAmount * 0.25f;
+	HeightMap[CombinedIndexPosition + ChunkSize].Z += DepositAmount * 0.25f;
+	HeightMap[CombinedIndexPosition + 1 + ChunkSize].Z += DepositAmount * 0.25f;
 }
 
 // Erodes terrain and gathers sediment to droplet
@@ -153,8 +153,8 @@ void UErosionSimulator::ErodeTerrain(TArray<FVector>& HeightMap, int CombinedInd
 		const int ErodedVertex = ErosionIndicesMap[CombinedIndexPosition][i];
 
 		// Applies boundaries to each map chunk in order to keep seams between them
-		if ((ErodedVertex / ErosionMapSize < BorderSize || ErodedVertex / ErosionMapSize > ErosionMapSize - (BorderSize
-			+ 1) || ErodedVertex % ErosionMapSize < BorderSize || ErodedVertex % ErosionMapSize > ErosionMapSize - (
+		if ((ErodedVertex / ChunkSize < BorderSize || ErodedVertex / ChunkSize > ChunkSize - (BorderSize
+			+ 1) || ErodedVertex % ChunkSize < BorderSize || ErodedVertex % ChunkSize > ChunkSize - (
 			BorderSize + 1)) && bBlockBoundaryErosion)
 			continue;
 
@@ -174,8 +174,8 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 
 	for (IterationIndex = 0; IterationIndex < IterationNumber; IterationIndex++)
 	{
-		float RealPositionX = RandomStream.FRandRange(ErosionRadius, ErosionMapSize - ErosionRadius);
-		float RealPositionY = RandomStream.FRandRange(ErosionRadius, ErosionMapSize - ErosionRadius);
+		float RealPositionX = RandomStream.FRandRange(ErosionRadius, ChunkSize - ErosionRadius);
+		float RealPositionY = RandomStream.FRandRange(ErosionRadius, ChunkSize - ErosionRadius);
 		float DirectionX = 0.f;
 		float DirectionY = 0.f;
 		float Speed = BaseWaterSpeed;
@@ -186,7 +186,7 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 		{
 			const int IndexPositionX = RealPositionX;
 			const int IndexPositionY = RealPositionY;
-			const int CombinedIndexPosition = IndexPositionX + IndexPositionY * ErosionMapSize;
+			const int CombinedIndexPosition = IndexPositionX + IndexPositionY * ChunkSize;
 
 			const FGradientAndHeight* CurrentGradientAndHeight = CalculateGradientAndHeight(
 				HeightMap, RealPositionX, RealPositionY
@@ -206,8 +206,8 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 			RealPositionY += DirectionY;
 
 			// Check if droplet stopped in a pit or flowed out of the map chunk (or entered chunk border)
-			if (DirectionX == 0.f && DirectionY == 0.f || (RealPositionX < BorderSize || RealPositionX > ErosionMapSize
-				- (BorderSize + 1) || RealPositionY < BorderSize || RealPositionY > ErosionMapSize - (BorderSize + 1
+			if (DirectionX == 0.f && DirectionY == 0.f || (RealPositionX < BorderSize || RealPositionX > ChunkSize
+				- (BorderSize + 1) || RealPositionY < BorderSize || RealPositionY > ChunkSize - (BorderSize + 1
 				)) && bBlockBoundaryErosion)
 				break;
 

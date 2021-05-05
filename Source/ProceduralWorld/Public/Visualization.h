@@ -14,8 +14,8 @@ class PROCEDURALWORLD_API UVisualization : public UActorComponent
 
 public:
 	UFUNCTION(BlueprintCallable)
-	UTexture2D* CreateNoiseTexture(TArray<float> NoiseArray, float NoiseArraySize);
+	static UTexture2D* CreateNoiseTexture(TArray<float> NoiseArray, float NoiseArraySize);
 
 	UFUNCTION(BlueprintCallable)
-	UTexture2D* CreateMaskTexture(TArray<float> MaskArray, float MapSideLength);
+	static UTexture2D* CreateMaskTexture(TArray<float> MaskArray, float MapSideLength);
 };
