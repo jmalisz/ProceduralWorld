@@ -35,10 +35,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SimulateErosion(TArray<FVector>& HeightMap);
 
-	UPROPERTY(EditAnywhere, Category="Erosion settings")
-	bool bBlockBoundaryErosion = true;
-
-	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=2, ClampMax=20))
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0, ClampMax=20))
 	int BorderSize = 3;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings")

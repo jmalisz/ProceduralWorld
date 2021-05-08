@@ -83,16 +83,15 @@ TArray<float> ANoiseGenerator::CreateMask()
 			// Mountains blocking map
 			if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= BorderMountainSquareBoundary)
 				// Linear equation from 1 to 0 in the area
-				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
-					100.f - (HalfSquareSide - 100.f) / 100.f;
+				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) / 100.f -
+					(HalfSquareSide - 100.f) / 100.f;
 
 				// Water between map center and border mountains
 			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= WaterSquareBoundary)
 			{
 				// Linear equation from 0 to 1 in the area
 				DataValue = (HalfSquareSide - 100.f) / 100.f - FMath::Max(
-						abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
-					100.f;
+					abs(x - HalfSquareSide), abs(y - HalfSquareSide)) / 100.f;
 				// Parabolic curve from 0 to -1 and back to 0 based on previous equation in the area
 				if (MoatHeightCurve) DataValue = MoatHeightCurve->GetFloatValue(DataValue);
 			}
@@ -204,7 +203,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 			// Noise and World are clamped from 0 to 1 by HeightCurve
 			if (bApplyMask)
 				Height = HeightMultiplier * TerrainHeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize] +
-					WorldMap[x + FalloffMapOffset + (y + WorldHandle->ChunkNumberY * NoiseArraySize) *
+					Mask[x + FalloffMapOffset + (y + WorldHandle->ChunkNumberY * NoiseArraySize) *
 						FalloffSquareSideLength]);
 			else
 				Height = HeightMultiplier * TerrainHeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize]);
@@ -311,7 +310,7 @@ void ANoiseGenerator::BeginPlay()
 	UpdateWorld();
 	UpdateGenerator();
 
-	if (bApplyMask) WorldMap = CreateMask();
+	if (bApplyMask) Mask = CreateMask();
 	if (bApplyErosion) ErosionSimulator->PrecalculateIndicesAndWeights();
 
 	const time_t StartTime = time(nullptr);

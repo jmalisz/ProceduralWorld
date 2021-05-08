@@ -1,4 +1,4 @@
-﻿// 
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -14,8 +14,5 @@ class PROCEDURALWORLD_API UVisualization : public UActorComponent
 
 public:
 	UFUNCTION(BlueprintCallable)
-	static UTexture2D* CreateNoiseTexture(TArray<float> NoiseArray, float NoiseArraySize);
-
-	UFUNCTION(BlueprintCallable)
-	static UTexture2D* CreateMaskTexture(TArray<float> MaskArray, float MapSideLength);
+	static UTexture2D* CreateTexture(TArray<float> ValueArray, float ValueArrayRowNum);
 };
