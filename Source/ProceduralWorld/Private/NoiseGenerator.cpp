@@ -1,9 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "NoiseGenerator.h"
-
 #include "ProceduralMeshComponent.h"
-#include "Kismet/KismetSystemLibrary.h"
 
 ANoiseGenerator::ANoiseGenerator()
 {
@@ -296,14 +294,16 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 void ANoiseGenerator::BeginPlay()
 {
 	const float WorldCenter = MapSize * MapArraySize * VertexSize / 2;
+	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
 
-	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(WorldCenter, WorldCenter, 12000.f),
+	PlayerController->ClientSetLocation(FVector(WorldCenter, WorldCenter, 12000.f),
 	                                                          FRotator(0.f)
 	);
+	EnableInput(PlayerController);
 
 	if (!TerrainHeightCurve)
 	{
-		UE_LOG(LogTemp, Error, TEXT("BeginPlay: TerrainHeightCurve not set"));
+		UE_LOG(LogTemp, Warning, TEXT("BeginPlay: TerrainHeightCurve not set"));
 		return;
 	}
 
@@ -313,15 +313,11 @@ void ANoiseGenerator::BeginPlay()
 	if (bApplyMask) Mask = CreateMask();
 	if (bApplyErosion) ErosionSimulator->PrecalculateIndicesAndWeights();
 
-	const time_t StartTime = time(nullptr);
-
 	for (int i = 0; i < FMath::Square(MapSize); i++)
 	{
-		Async(EAsyncExecution::Thread, [&, i, StartTime]
+		Async(EAsyncExecution::Thread, [&, i]
 		{
 			GenerateTerrain(i);
-			if (i == FMath::Square(MapSize)) UE_LOG(LogTemp, Warning, TEXT("BeginPlay finished: elapsed time - %f"),
-			                                        difftime(time(nullptr), StartTime));
 		});
 	}
 }

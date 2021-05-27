@@ -128,8 +128,8 @@ FGradientAndHeight* UErosionSimulator::CalculateGradientAndHeight(TArray<FVector
 void UErosionSimulator::DepositSediment(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta,
                                         float& Sediment, float SedimentCapacity)
 {
-	const float DepositAmount = HeightDelta > 0
-		                            ? FMath::Min(HeightDelta, Sediment)
+	const float DepositAmount = HeightDelta < 0
+		                            ? FMath::Min(-HeightDelta, Sediment)
 		                            : (Sediment - SedimentCapacity) * DepositionSpeed;
 	Sediment -= DepositAmount;
 
@@ -143,7 +143,7 @@ void UErosionSimulator::DepositSediment(TArray<FVector>& HeightMap, int Combined
 void UErosionSimulator::ErodeTerrain(TArray<FVector>& HeightMap, int CombinedIndexPosition, float HeightDelta,
                                      float& Sediment, float SedimentCapacity)
 {
-	const float ErosionAmount = FMath::Min((SedimentCapacity - Sediment) * ErosionSpeed, -HeightDelta);
+	const float ErosionAmount = FMath::Min((SedimentCapacity - Sediment) * ErosionSpeed, HeightDelta);
 
 	// Uses precalculated vertices for each vertex on the map
 	for (int i = 0; i < ErosionIndicesMap[CombinedIndexPosition].Num(); i++)
@@ -211,18 +211,18 @@ void UErosionSimulator::SimulateErosion(TArray<FVector>& HeightMap)
 			const FGradientAndHeight* NewGradientAndHeight = CalculateGradientAndHeight(
 				HeightMap, RealPositionX, RealPositionY);
 
-			const float HeightDelta = NewGradientAndHeight->Height - CurrentGradientAndHeight->Height;
+			const float HeightDelta = CurrentGradientAndHeight->Height - NewGradientAndHeight->Height;
 
-			const float SedimentCapacity = FMath::Max(-HeightDelta, MinSedimentCapacity) * Speed *
+			const float SedimentCapacity = FMath::Max(HeightDelta, MinSedimentCapacity) * Speed *
 				Water * SedimentCapacityFactor;
 
-			if (Sediment > SedimentCapacity || HeightDelta > 0)
+			if (Sediment > SedimentCapacity || HeightDelta < 0)
 				DepositSediment(HeightMap, CombinedIndexPosition, HeightDelta, Sediment, SedimentCapacity);
 			else
 				ErodeTerrain(HeightMap, CombinedIndexPosition, HeightDelta, Sediment, SedimentCapacity);
 
 			// Calculate droplet speed as an approximation based on slope
-			Speed = FMath::Max(-HeightDelta * BaseWaterSpeed, 0.f);
+			Speed = FMath::Max(HeightDelta * BaseWaterSpeed, 0.f);
 			Water *= 1 - EvaporationSpeed;
 		}
 	}
