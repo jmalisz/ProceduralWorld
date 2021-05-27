@@ -1,9 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "NoiseGenerator.h"
-
 #include "ProceduralMeshComponent.h"
-#include "Kismet/KismetSystemLibrary.h"
 
 ANoiseGenerator::ANoiseGenerator()
 {
@@ -83,16 +81,15 @@ TArray<float> ANoiseGenerator::CreateMask()
 			// Mountains blocking map
 			if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= BorderMountainSquareBoundary)
 				// Linear equation from 1 to 0 in the area
-				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
-					100.f - (HalfSquareSide - 100.f) / 100.f;
+				DataValue = FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) / 100.f -
+					(HalfSquareSide - 100.f) / 100.f;
 
 				// Water between map center and border mountains
 			else if (FMath::Max(abs(x - HalfSquareSide), abs(y - HalfSquareSide)) >= WaterSquareBoundary)
 			{
 				// Linear equation from 0 to 1 in the area
 				DataValue = (HalfSquareSide - 100.f) / 100.f - FMath::Max(
-						abs(x - HalfSquareSide), abs(y - HalfSquareSide)) /
-					100.f;
+					abs(x - HalfSquareSide), abs(y - HalfSquareSide)) / 100.f;
 				// Parabolic curve from 0 to -1 and back to 0 based on previous equation in the area
 				if (MoatHeightCurve) DataValue = MoatHeightCurve->GetFloatValue(DataValue);
 			}
@@ -204,7 +201,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 			// Noise and World are clamped from 0 to 1 by HeightCurve
 			if (bApplyMask)
 				Height = HeightMultiplier * TerrainHeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize] +
-					WorldMap[x + FalloffMapOffset + (y + WorldHandle->ChunkNumberY * NoiseArraySize) *
+					Mask[x + FalloffMapOffset + (y + WorldHandle->ChunkNumberY * NoiseArraySize) *
 						FalloffSquareSideLength]);
 			else
 				Height = HeightMultiplier * TerrainHeightCurve->GetFloatValue(NoiseArray[x + y * NoiseArraySize]);
@@ -297,32 +294,30 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 void ANoiseGenerator::BeginPlay()
 {
 	const float WorldCenter = MapSize * MapArraySize * VertexSize / 2;
+	APlayerController* PlayerController = GetWorld()->GetFirstPlayerController();
 
-	GetWorld()->GetFirstPlayerController()->ClientSetLocation(FVector(WorldCenter, WorldCenter, 12000.f),
+	PlayerController->ClientSetLocation(FVector(WorldCenter, WorldCenter, 12000.f),
 	                                                          FRotator(0.f)
 	);
+	EnableInput(PlayerController);
 
 	if (!TerrainHeightCurve)
 	{
-		UE_LOG(LogTemp, Error, TEXT("BeginPlay: TerrainHeightCurve not set"));
+		UE_LOG(LogTemp, Warning, TEXT("BeginPlay: TerrainHeightCurve not set"));
 		return;
 	}
 
 	UpdateWorld();
 	UpdateGenerator();
 
-	if (bApplyMask) WorldMap = CreateMask();
+	if (bApplyMask) Mask = CreateMask();
 	if (bApplyErosion) ErosionSimulator->PrecalculateIndicesAndWeights();
-
-	const time_t StartTime = time(nullptr);
 
 	for (int i = 0; i < FMath::Square(MapSize); i++)
 	{
-		Async(EAsyncExecution::Thread, [&, i, StartTime]
+		Async(EAsyncExecution::Thread, [&, i]
 		{
 			GenerateTerrain(i);
-			if (i == FMath::Square(MapSize)) UE_LOG(LogTemp, Warning, TEXT("BeginPlay finished: elapsed time - %f"),
-			                                        difftime(time(nullptr), StartTime));
 		});
 	}
 }

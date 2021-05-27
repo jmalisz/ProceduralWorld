@@ -35,10 +35,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SimulateErosion(TArray<FVector>& HeightMap);
 
-	UPROPERTY(EditAnywhere, Category="Erosion settings")
-	bool bBlockBoundaryErosion = true;
-
-	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=2, ClampMax=20))
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0, ClampMax=20))
 	int BorderSize = 3;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings")
@@ -47,8 +44,8 @@ public:
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=1.f, ClampMax=1000.f))
 	float BaseWaterSpeed = 4.f;
 	
-	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=1.f))
-	float Inertia = 0.4f;
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=0.999f))
+	float Inertia = 0.1f;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.1f, ClampMax=1000.f))
 	float SedimentCapacityFactor = 4.f;
@@ -63,9 +60,9 @@ public:
 	float ErosionSpeed = 0.9f;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=1.f))
-	float DepositionSpeed = 0.1f;
+	float DepositionSpeed = 0.3f;
 
-	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=1.f))
+	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=0.f, ClampMax=0.999f))
 	float EvaporationSpeed = 0.1f;
 
 	UPROPERTY(EditAnywhere, Category="Erosion settings", Meta=(ClampMin=1, ClampMax=100))

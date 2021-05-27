@@ -111,7 +111,7 @@ protected:
 private:
 	UPROPERTY()
 	TArray<FChunkProperties> World;
-	TArray<float> WorldMap;
+	TArray<float> Mask;
 
 	FastNoiseLite NoiseGen;
 	// Size of square made of 2 triangles
