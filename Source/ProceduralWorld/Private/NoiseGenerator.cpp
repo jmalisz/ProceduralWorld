@@ -167,8 +167,6 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 	//Starting position for chunk
 	const float StartingPositionX = WorldHandle->ChunkNumberX ? ChunkOffsetX * VertexSize : 0;
 	const float StartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * VertexSize : 0;
-	const float UVStartingPositionX = WorldHandle->ChunkNumberX ? ChunkOffsetX * 1.f : 0;
-	const float UVStartingPositionY = WorldHandle->ChunkNumberY ? ChunkOffsetY * 1.f : 0;
 
 	// The numbers are number of times array is accessed inside loop
 	Vertices.Reserve(NoiseArraySizeSquared);
@@ -243,7 +241,7 @@ void ANoiseGenerator::GenerateTerrain(int TerrainIndex)
 				WaterNormals.Add(FVector(0.f, 0.f, 1.f));
 				TrueVertices.Add(Vertices[x + y * NoiseArraySize]);
 				TrueNormals.Add(Normals[x + y * NoiseArraySize]);
-				UV.Add(FVector2D(UVStartingPositionX + (x - 1) * 1.0f, UVStartingPositionY + (y - 1) * 1.0f));
+				UV.Add(FVector2D(x, y));
 			}
 		}
 	}
